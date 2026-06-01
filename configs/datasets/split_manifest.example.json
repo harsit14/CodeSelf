@@ -1,0 +1,12 @@
+{
+  "dataset": {
+    "fingerprint": "pending",
+    "name": "toy",
+    "seed": 20260601,
+    "task_count": 1,
+    "version": "example"
+  },
+  "splits": {
+    "train": 1
+  }
+}

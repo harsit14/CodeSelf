@@ -1,0 +1,22 @@
+# Example split manifest.
+dataset:
+  name: toy
+  version: example
+  created_on: 2026-06-01
+
+splits:
+  train:
+    source: configs/datasets/tasks.example.jsonl
+    hash: pending
+  dev:
+    source: pending
+    hash: pending
+  test_public:
+    source: pending
+    hash: pending
+  test_private:
+    source: pending
+    hash: pending
+  stress:
+    source: pending
+    hash: pending

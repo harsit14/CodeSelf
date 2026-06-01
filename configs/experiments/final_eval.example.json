@@ -1,0 +1,26 @@
+{
+  "experiment": {
+    "name": "final_eval_example",
+    "objective": "compare_base_and_candidate_on_frozen_heldout_rollouts"
+  },
+  "inputs": {
+    "base_rollouts": "outputs/rollouts/base_final.jsonl",
+    "candidate_rollouts": "outputs/rollouts/candidate_final.jsonl"
+  },
+  "comparison": {
+    "sample_index": 0,
+    "bootstrap_samples": 2000,
+    "confidence": 0.95,
+    "seed": 20260601,
+    "statistical_test": "exact_mcnemar"
+  },
+  "outputs": {
+    "report": "outputs/reports/final_paired_evaluation.md",
+    "json": "outputs/reports/final_paired_evaluation.json"
+  },
+  "rules": [
+    "Use frozen held-out tasks only.",
+    "Do not use final held-out results to select checkpoints.",
+    "Report all task flips and confidence intervals."
+  ]
+}

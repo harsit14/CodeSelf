@@ -1,0 +1,35 @@
+experiment:
+  name: grpo_smoke_example
+  seed: 20260601
+  objective: verify_end_to_end_training_loop
+
+model:
+  config: configs/models/base_model.example.yaml
+  lora_rank: 16
+
+data:
+  split_manifest: configs/datasets/splits.example.yaml
+  train_limit: 100
+  dev_limit: 50
+
+rollout:
+  group_size: 4
+  temperature: 0.8
+  top_p: 0.95
+  max_new_tokens: 512
+  generation_backend: vllm_or_transformers_debug
+
+reward:
+  config: configs/rewards/reward_v0_correctness.yaml
+
+training:
+  algorithm: grpo
+  learning_rate: 0.000001
+  max_steps: 100
+  kl_beta: 0.05
+  stop_if_informative_prompt_fraction_below: 0.10
+
+evaluation:
+  run_every_steps: 25
+  primary_metric: pass_at_1
+  require_power_analysis: true

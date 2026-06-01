@@ -1,0 +1,32 @@
+{
+  "experiment": {
+    "name": "main_grpo_matrix_local_example",
+    "objective": "orchestrate_ablation_matrix_before_real_trl_training"
+  },
+  "data": {
+    "tasks": "configs/datasets/tasks.example.jsonl",
+    "split": "train",
+    "limit": 100
+  },
+  "matrix": {
+    "seeds": [20260601, 20260602, 20260603],
+    "group_sizes": [4, 8],
+    "kl_betas": [0.02, 0.05],
+    "curriculum_modes": ["static", "informative"],
+    "reward_names": ["reward_v0_correctness"]
+  },
+  "generation": {
+    "backend": "mock",
+    "temperature": 0.8,
+    "top_p": 0.95,
+    "max_new_tokens": 512
+  },
+  "selection": {
+    "primary_metric": "mean_reward",
+    "minimum_informative_prompt_fraction": 0.1,
+    "policy": "dev_or_smoke_metrics_only_no_heldout_test"
+  },
+  "output": {
+    "dir": "outputs/checkpoints/main_grpo_matrix_example"
+  }
+}

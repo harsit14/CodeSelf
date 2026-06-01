@@ -1,0 +1,26 @@
+{
+  "experiment": {
+    "name": "agentic_smoke_example",
+    "objective": "evaluate_public_test_self_debug_loop"
+  },
+  "data": {
+    "tasks": "configs/datasets/tasks.example.jsonl",
+    "split": "train",
+    "limit": 10
+  },
+  "generation": {
+    "backend": "mock",
+    "prompt_template": "direct_solution_v1",
+    "temperature": 0.8,
+    "top_p": 0.95,
+    "max_new_tokens": 512
+  },
+  "agent": {
+    "max_revisions": 1,
+    "use_rule_based_repair": true
+  },
+  "outputs": {
+    "traces": "outputs/reports/agentic_traces.jsonl",
+    "strategy_report": "outputs/reports/agentic_strategy_report.md"
+  }
+}

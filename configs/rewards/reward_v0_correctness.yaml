@@ -1,0 +1,18 @@
+reward:
+  name: reward_v0_correctness
+  description: Correctness-first MVP reward.
+  weights:
+    syntax_and_import_success: 0.20
+    public_test_fraction: 0.30
+    hidden_test_fraction: 0.40
+    robustness_test_fraction: 0.10
+  penalties:
+    syntax_error: -0.25
+    unsafe_code: -1.00
+    timeout: -0.50
+    format_violation: -0.10
+    flaky_result: -0.25
+
+notes:
+  - Quality and efficiency are metrics in the MVP, not optimized rewards.
+  - Do not change this file inside an experiment run.

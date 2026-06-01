@@ -1,0 +1,12 @@
+{
+  "toy/add-one": {
+    "hidden_tests": [
+      {
+        "name": "hidden-negative",
+        "code": "assert add_one(-1) == 0",
+        "visibility": "hidden",
+        "kind": "unit"
+      }
+    ]
+  }
+}

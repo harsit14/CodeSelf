@@ -1,0 +1,17 @@
+experiment:
+  name: evaluation_smoke_example
+  seed: 20260601
+
+input:
+  rollouts: outputs/rollouts/mock_smoke.jsonl
+
+evaluation:
+  ks: [1, 5, 10]
+  primary_metric: pass@1
+  report: outputs/reports/mock_baseline.md
+  power_analysis: outputs/reports/mock_power.json
+  alpha: 0.05
+
+notes:
+  - This evaluates rollout JSONL produced by scripts/run_rollouts.py.
+  - Final claims still require paired tests against a trained checkpoint.

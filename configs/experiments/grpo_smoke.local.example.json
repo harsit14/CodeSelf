@@ -1,0 +1,27 @@
+{
+  "experiment": {
+    "name": "grpo_smoke_local_example",
+    "seed": 20260601,
+    "objective": "validate_group_relative_reward_pipeline"
+  },
+  "data": {
+    "tasks": "configs/datasets/tasks.example.jsonl",
+    "split": "train",
+    "limit": 10
+  },
+  "generation": {
+    "backend": "mock",
+    "group_size": 4,
+    "max_new_tokens": 512,
+    "temperature": 0.8,
+    "top_p": 0.95
+  },
+  "training": {
+    "algorithm": "grpo_smoke",
+    "max_steps": 3,
+    "stop_if_informative_prompt_fraction_below": 0.1
+  },
+  "output": {
+    "dir": "outputs/checkpoints/grpo_smoke_example"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "experiment": {
+    "name": "ppo_smoke_local_example",
+    "objective": "validate_ppo_style_reward_advantage_pipeline"
+  },
+  "data": {
+    "tasks": "configs/datasets/tasks.example.jsonl",
+    "split": "train",
+    "limit": 10
+  },
+  "generation": {
+    "backend": "mock",
+    "samples_per_task": 4,
+    "max_new_tokens": 512,
+    "temperature": 0.8,
+    "top_p": 0.95
+  },
+  "training": {
+    "algorithm": "ppo_smoke",
+    "max_steps": 3,
+    "clip_epsilon": 0.2,
+    "value_loss_coef": 0.5
+  },
+  "output": {
+    "dir": "outputs/checkpoints/ppo_smoke_example"
+  }
+}

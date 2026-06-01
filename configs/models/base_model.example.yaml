@@ -1,0 +1,15 @@
+# Example model decision record.
+model:
+  name: Qwen/Qwen2.5-Coder-1.5B
+  revision: pin-before-training
+  tokenizer: Qwen/Qwen2.5-Coder-1.5B
+  license_review: pending
+
+headroom_audit:
+  parseable_output_rate: pending
+  greedy_pass_at_1: pending
+  sampled_pass_at_1: pending
+  pass_at_k: pending
+  informative_prompt_fraction: pending
+  ceiling_risk: pending
+  sft_warm_start_required: pending
