@@ -392,14 +392,24 @@ Tenth slice shipped:
 - Added a Torch-backed unit test that runs two full cycles and verifies artifact
   layout, seed progression, optimizer steps, and parameter updates.
 
+Eleventh slice shipped:
+
+- Added old-policy snapshot syncing for repeated GRPO online cycles.
+- `GRPOOnlineTrainingConfig` now defaults to syncing a supplied old-policy
+  model from the current policy before each cycle.
+- Each `GRPOOnlineTrainingStep` records whether the old-policy snapshot was
+  synced, making the ratio baseline visible in serialized diagnostics.
+- Added validation that the policy exposes `state_dict()` and the old-policy
+  model exposes `load_state_dict()` when snapshot syncing is enabled.
+- Extended the Torch-backed online test to verify one old-policy load per cycle.
+
 Remaining risks:
 
-- This now supports repeated online cycles with artifact cadence, but it still
-  does not snapshot an old-policy model between cycles or run dev-set evaluation
-  between updates.
-- Old-policy and reference logprobs can now come from records or optional model
-  forward passes, but old-policy logprob capture during rollout collection is
-  still not wired.
+- This now supports repeated online cycles with artifact cadence and optional
+  old-policy snapshot sync, but it still does not run dev-set evaluation between
+  updates.
+- Old-policy logprobs can come from synced model snapshots during training, but
+  logprob capture at generation time is still not wired.
 - Scheduler stepping and Torch state checkpointing are supported, but LoRA
   adapter-specific checkpointing and a Transformers-backed causal-LM trainer are
   not wired yet.

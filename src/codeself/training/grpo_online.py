@@ -29,6 +29,7 @@ class GRPOOnlineTrainingConfig:
         default_factory=GRPORolloutTrainingCycleConfig
     )
     seed_stride: int = 1
+    sync_old_policy_before_cycle: bool = True
 
     def __post_init__(self) -> None:
         if self.cycles <= 0:
@@ -49,6 +50,7 @@ class GRPOOnlineTrainingConfig:
             "cycles": self.cycles,
             "cycle": self.cycle.to_dict(),
             "seed_stride": self.seed_stride,
+            "sync_old_policy_before_cycle": self.sync_old_policy_before_cycle,
         }
 
 
@@ -59,6 +61,7 @@ class GRPOOnlineTrainingStep:
     cycle: int
     seed: int
     result: GRPORolloutTrainingCycleResult
+    old_policy_synced: bool = False
 
     @property
     def rollout_count(self) -> int:
@@ -80,6 +83,7 @@ class GRPOOnlineTrainingStep:
         return {
             "cycle": self.cycle,
             "seed": self.seed,
+            "old_policy_synced": self.old_policy_synced,
             "rollout_count": self.rollout_count,
             "records_used": self.records_used,
             "mean_reward": self.mean_reward,
@@ -167,6 +171,10 @@ def run_grpo_online_training(
         cycle_dir = output_dir / f"cycle_{cycle:04d}" if output_dir is not None else None
         if cycle_dir is not None:
             cycle_dir.mkdir(parents=True, exist_ok=True)
+        old_policy_synced = False
+        if old_policy_model is not None and online_config.sync_old_policy_before_cycle:
+            _sync_model_state(policy_model, old_policy_model)
+            old_policy_synced = True
         result = run_grpo_rollout_training_cycle(
             task_list,
             generator=generator,
@@ -195,6 +203,7 @@ def run_grpo_online_training(
                 cycle=cycle,
                 seed=cycle_config.seed,
                 result=result,
+                old_policy_synced=old_policy_synced,
             )
         )
 
@@ -216,6 +225,14 @@ def _build_optimizer(policy_model: Any, config: GRPOOnlineTrainingConfig) -> Any
         lr=optimizer_config.learning_rate,
         weight_decay=optimizer_config.weight_decay,
     )
+
+
+def _sync_model_state(source_model: Any, target_model: Any) -> None:
+    if not hasattr(source_model, "state_dict"):
+        raise TypeError("policy_model must define state_dict() to sync old-policy state")
+    if not hasattr(target_model, "load_state_dict"):
+        raise TypeError("old_policy_model must define load_state_dict()")
+    target_model.load_state_dict(source_model.state_dict())
 
 
 def _trainable_parameters(model: Any) -> list[Any]:

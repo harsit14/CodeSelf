@@ -38,6 +38,7 @@ class GRPOOnlineTrainingTests(unittest.TestCase):
         self.assertEqual(config.cycle_config_for(2).seed, 15)
         self.assertEqual(config.cycle_config_for(3).seed, 20)
         self.assertEqual(config.to_dict()["cycles"], 3)
+        self.assertTrue(config.to_dict()["sync_old_policy_before_cycle"])
         with self.assertRaises(ValueError):
             GRPOOnlineTrainingConfig(cycles=0)
         with self.assertRaises(ValueError):
@@ -61,6 +62,7 @@ class GRPOOnlineTrainingTests(unittest.TestCase):
 
         tokenizer = _SequentialTokenizerEngine()
         policy_model = _ToyCausalLM(vocab_size=512)
+        old_policy_model = _ToyCausalLM(vocab_size=512)
         before = policy_model.logit_table.detach().clone()
         with tempfile.TemporaryDirectory() as tmpdir:
             artifact_dir = Path(tmpdir) / "online"
@@ -70,6 +72,7 @@ class GRPOOnlineTrainingTests(unittest.TestCase):
                 prompt_template=DIRECT_SOLUTION_TEMPLATE,
                 tokenizer=tokenizer,
                 policy_model=policy_model,
+                old_policy_model=old_policy_model,
                 config=GRPOOnlineTrainingConfig(
                     cycles=2,
                     cycle=GRPORolloutTrainingCycleConfig(
@@ -109,6 +112,9 @@ class GRPOOnlineTrainingTests(unittest.TestCase):
         self.assertEqual(result.records_used, 4)
         self.assertEqual(result.total_optimizer_steps, 2)
         self.assertEqual([step.seed for step in result.steps], [4, 5])
+        self.assertTrue(all(step.old_policy_synced for step in result.steps))
+        self.assertTrue(result.steps[0].to_dict()["old_policy_synced"])
+        self.assertEqual(old_policy_model.load_count, 2)
         self.assertEqual(result.steps[0].result.rollouts[0].metadata["online_cycle"], 1)
         self.assertEqual(result.steps[1].result.rollouts[0].metadata["online_cycle"], 2)
         self.assertEqual(first_metrics["phase"], "grpo_model_training")
@@ -159,6 +165,7 @@ class _ToyCausalLM:
         import torch
 
         self.logit_table = torch.nn.Parameter(torch.zeros((vocab_size, vocab_size)))
+        self.load_count = 0
 
     def parameters(self) -> tuple[object]:
         return (self.logit_table,)
@@ -168,6 +175,13 @@ class _ToyCausalLM:
 
     def state_dict(self) -> dict[str, object]:
         return {"logit_table": self.logit_table.detach().clone()}
+
+    def load_state_dict(self, state: dict[str, object]) -> None:
+        import torch
+
+        self.load_count += 1
+        with torch.no_grad():
+            self.logit_table.copy_(state["logit_table"])
 
     def __call__(self, *, input_ids: object, attention_mask: object) -> object:
         return SimpleNamespace(logits=self.logit_table[input_ids])
