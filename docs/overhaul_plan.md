@@ -510,12 +510,30 @@ Fifth slice shipped:
   accumulation groups, scheduler stepping, `max_batches`, value-loss metrics,
   and empty input validation.
 
+Sixth slice shipped:
+
+- Added a minimal model-aware PPO trainer over Torch causal-LM modules and value
+  heads.
+- Added `PPOModelTrainingConfig`, `PPOModelTrainingResult`,
+  `PPOCheckpointArtifact`, and `PPOValueEstimateProvider` records.
+- Added `run_ppo_model_training()` to configure model modes, create an AdamW
+  optimizer when one is not supplied, build model-forward PPO tensor batches,
+  run the PPO training loop, and return checkpoint-ready metadata.
+- The trainer supports integrated value heads, separate value models,
+  old-policy snapshots, old-value models, reference models, callable or static
+  rollout-time value estimates, JSONL metric writing, checkpoint manifests, and
+  Torch state artifacts.
+- Added active Torch tests for integrated policy/value updates, separate value
+  model state, old/reference model evaluation modes, adapter-style
+  `save_pretrained()` artifacts, config validation, and missing trainable
+  parameter failures.
+
 Remaining risks:
 
 - PPO now has dependency-free and Torch objective implementations, an optimizer
-  step, model/value-head tensor wiring, and a tensor training loop; it still
-  needs a model-aware trainer, rollout cycle, and online trainer parity with
-  the completed GRPO path.
+  step, model/value-head tensor wiring, a tensor training loop, and a
+  model-aware trainer; it still needs rollout cycle and online trainer parity
+  with the completed GRPO path.
 - Rollout budget and dev-evaluation parity with GRPO should be enforced once the
   PPO online trainer exists.
 

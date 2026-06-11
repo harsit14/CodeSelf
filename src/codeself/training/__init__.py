@@ -163,6 +163,13 @@ from codeself.training.ppo_step import (
     PPOOptimizerStepResult,
     run_ppo_optimizer_step,
 )
+from codeself.training.ppo_trainer import (
+    PPOCheckpointArtifact,
+    PPOModelTrainingConfig,
+    PPOModelTrainingResult,
+    PPOValueEstimateProvider,
+    run_ppo_model_training,
+)
 
 __all__ = [
     "AlgorithmComparison",
@@ -205,8 +212,11 @@ __all__ = [
     "ModelEngineCodeGenerator",
     "ModelRuntimeConfig",
     "OptimizerConfig",
+    "PPOCheckpointArtifact",
     "PPOLossConfig",
     "PPOLossResult",
+    "PPOModelTrainingConfig",
+    "PPOModelTrainingResult",
     "PPOSampleLoss",
     "PPOSmokeConfig",
     "PPOSmokeResult",
@@ -219,6 +229,7 @@ __all__ = [
     "PPOTrainingLoopResult",
     "PPOTrainingLoopStep",
     "PPOValueEstimate",
+    "PPOValueEstimateProvider",
     "PPOValueTarget",
     "PPOValueTargetResult",
     "PPOOptimizerStepConfig",
@@ -279,6 +290,7 @@ __all__ = [
     "run_grpo_optimizer_step",
     "run_grpo_rollout_training_cycle",
     "run_grpo_training_loop",
+    "run_ppo_model_training",
     "run_ppo_optimizer_step",
     "run_ppo_training_loop",
     "select_best_run",
