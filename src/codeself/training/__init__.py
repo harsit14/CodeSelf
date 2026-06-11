@@ -16,7 +16,7 @@ from codeself.training.experiments import (
     write_experiment_summary_json,
     write_experiment_table,
 )
-from codeself.training.grpo_train import (
+from codeself.training.smoke.grpo import (
     GRPOSmokeConfig,
     GRPOSmokeResult,
     GRPOSmokeTrainer,
@@ -25,7 +25,7 @@ from codeself.training.grpo_train import (
     compute_group_advantages,
     summarize_grpo_step,
 )
-from codeself.training.ppo_train import (
+from codeself.training.smoke.ppo import (
     PPOSmokeConfig,
     PPOSmokeResult,
     PPOSmokeTrainer,
