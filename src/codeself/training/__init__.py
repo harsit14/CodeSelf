@@ -67,6 +67,11 @@ from codeself.training.grpo_model import (
     gather_causal_lm_token_logprobs,
     pad_training_batch_tensors,
 )
+from codeself.training.grpo_trainer import (
+    GRPOModelTrainingConfig,
+    GRPOModelTrainingResult,
+    run_grpo_model_training,
+)
 from codeself.training.grpo_loop import (
     GRPOTrainingLoopConfig,
     GRPOTrainingLoopResult,
@@ -114,6 +119,8 @@ __all__ = [
     "GRPOGroupAdvantage",
     "GRPOLossConfig",
     "GRPOLossResult",
+    "GRPOModelTrainingConfig",
+    "GRPOModelTrainingResult",
     "GRPOOptimizerStepConfig",
     "GRPOOptimizerStepResult",
     "GRPOSampleLoss",
@@ -177,6 +184,7 @@ __all__ = [
     "pad_training_batch_tensors",
     "read_last_metric",
     "require_torch",
+    "run_grpo_model_training",
     "run_grpo_optimizer_step",
     "run_grpo_training_loop",
     "select_best_run",

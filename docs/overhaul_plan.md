@@ -321,15 +321,29 @@ Fifth slice shipped:
   a test that drives the existing GRPO training loop through the model-facing
   tensor batch builder.
 
+Sixth slice shipped:
+
+- Added a minimal model-aware GRPO trainer over Torch causal-LM modules.
+- Added `GRPOModelTrainingConfig` and `GRPOModelTrainingResult` to bind loss,
+  optimizer, batch limit, scheduler, dtype, device, and pad-token settings.
+- Added `run_grpo_model_training()` to configure model train/eval modes, create
+  an AdamW optimizer when one is not supplied, build model-forward tensor
+  batches, run the GRPO training loop, and return checkpoint-ready metadata.
+- Added optional JSONL metric writing and checkpoint manifest writing for the
+  model-training path.
+- Added active Torch tests for optimizer creation, parameter updates, metrics
+  files, checkpoint manifests, reference-model KL wiring, and invalid config
+  cases.
+
 Remaining risks:
 
-- This updates optimizer parameters for prepared tensor batches when Torch is
-  installed and now has a microbatch loop, but it is not yet a full model
-  training loop.
+- This now updates parameters through a model-aware trainer for Torch modules,
+  but it is not yet wired to rollout collection or a real Transformers model.
 - Old-policy and reference logprobs can now come from records or optional model
   forward passes, but they are not yet connected to rollout collection.
 - Scheduler stepping is supported, but checkpointing, LoRA attachment, and a
-  Transformers-backed causal-LM trainer are not wired yet.
+  Transformers-backed causal-LM trainer are not wired yet. The checkpoint
+  manifest records metadata but does not save model weights.
 - Group sampling is still represented by batch grouping rather than a full
   generate -> execute -> score -> optimize loop.
 
