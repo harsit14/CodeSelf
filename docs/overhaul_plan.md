@@ -234,17 +234,16 @@ Remaining risks:
 
 ## Phase 5: Real GRPO
 
-Status: started
+Status: complete
 
 Goals:
 
-- Implement group sampling per prompt.
-- Normalize group-relative advantages. Started.
-- Use clipped policy-gradient loss over response tokens only. Started.
-- Penalize or constrain KL against a frozen reference model. Started.
-- Periodically evaluate on a dev slice.
-- Write checkpoints, metrics, rollouts, and reproducibility metadata. Started
-  with optimizer-step metrics.
+- Implement group sampling per prompt. Done.
+- Normalize group-relative advantages. Done.
+- Use clipped policy-gradient loss over response tokens only. Done.
+- Penalize or constrain KL against a frozen reference model. Done.
+- Periodically evaluate on a dev slice. Done.
+- Write checkpoints, metrics, rollouts, and reproducibility metadata. Done.
 
 First slice shipped:
 
@@ -403,19 +402,31 @@ Eleventh slice shipped:
   model exposes `load_state_dict()` when snapshot syncing is enabled.
 - Extended the Torch-backed online test to verify one old-policy load per cycle.
 
-Remaining risks:
+Twelfth slice shipped:
 
-- This now supports repeated online cycles with artifact cadence and optional
-  old-policy snapshot sync, but it still does not run dev-set evaluation between
-  updates.
-- Old-policy logprobs can come from synced model snapshots during training, but
-  logprob capture at generation time is still not wired.
-- Scheduler stepping and Torch state checkpointing are supported, but LoRA
-  adapter-specific checkpointing and a Transformers-backed causal-LM trainer are
-  not wired yet.
-- The cycle can use grouped rollout records, but the current generator and
-  policy model are still separate objects unless the caller wires them to the
-  same underlying Transformers model.
+- Added optional dev-set evaluation cadence to `run_grpo_online_training()`.
+- Online GRPO can now generate evaluation rollouts after each cycle, write
+  `eval_rollouts.jsonl`, write `evaluation.json`, and attach the evaluation
+  summary to the per-cycle result.
+- Added `ModelEngineCodeGenerator` so a shared training `ModelEngine` can drive
+  rollout generation while exposing the same tokenizer/model pair for GRPO.
+- Exposed the underlying model and raw tokenizer from `TransformersModelEngine`
+  for advanced from-scratch GRPO integration.
+- Extended checkpoint writing to preserve `save_pretrained()` artifacts, which
+  covers PEFT/LoRA-style adapter checkpoints without importing PEFT in tests.
+- Added tests for dev evaluation artifacts, model-engine generation, and
+  `save_pretrained()` checkpoint artifacts.
+
+Phase 5 completion note:
+
+- Real GRPO now has dependency-free reference math, Torch tensor losses,
+  optimizer steps, model-forward batches, model-aware training, state and
+  adapter-style checkpoints, rollout-to-batch conversion, one-cycle training,
+  repeated online cycles, old-policy snapshot syncing, dev evaluation cadence,
+  and a shared-policy generator adapter.
+- Remaining work now belongs to later named phases: PPO parity, richer
+  evaluation/statistics/dashboarding, self-debug rollout mode, and final
+  paper-ready packaging.
 
 ## Phase 6: PPO Baseline
 

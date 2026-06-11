@@ -8,9 +8,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.config import load_config_file  # noqa: E402
+from codeself.agent import GenerationRequest as AgentGenerationRequest  # noqa: E402
 from codeself.training import (  # noqa: E402
     GeneratedSequence,
     GenerationRequest,
+    ModelEngineCodeGenerator,
     ModelRuntimeConfig,
     TransformersEngineConfig,
     WhitespaceTokenizerEngine,
@@ -129,6 +131,32 @@ class TrainingEngineTests(unittest.TestCase):
         self.assertEqual(payload["model"]["name"], "Qwen/Qwen2.5-Coder-0.5B")
         self.assertIsNone(payload["device_map"])
 
+    def test_model_engine_generator_adapts_training_engine_to_rollouts(self) -> None:
+        engine = _FakeModelEngine()
+        generator = ModelEngineCodeGenerator(
+            engine,
+            model_name="shared-policy",
+            backend_name="policy_engine",
+        )
+
+        result = generator.generate(
+            AgentGenerationRequest(
+                task_id="task/a",
+                prompt="write add",
+                sample_index=0,
+                seed=11,
+                max_new_tokens=4,
+                temperature=0.0,
+                top_p=1.0,
+            )
+        )
+
+        self.assertEqual(result.text, "def add")
+        self.assertEqual(result.backend, "policy_engine")
+        self.assertEqual(result.model_name, "shared-policy")
+        self.assertEqual(result.metadata["finish_reason"], "stop")
+        self.assertEqual(result.metadata["response_tokens"], 2)
+
     def test_model_engine_debug_config_parses_training_core_fields(self) -> None:
         raw_config = load_config_file(
             ROOT / "configs" / "experiments" / "model_engine_debug.example.json"
@@ -138,6 +166,21 @@ class TrainingEngineTests(unittest.TestCase):
         self.assertEqual(core_config.backend, "from_scratch")
         self.assertEqual(core_config.model.tokenizer_name, "Qwen/Qwen2.5-Coder-0.5B")
         self.assertEqual(core_config.rollout.max_response_tokens, 128)
+
+
+class _FakeModelEngine:
+    def __init__(self) -> None:
+        self.tokenizer = WhitespaceTokenizerEngine()
+
+    def generate(self, request: GenerationRequest) -> GeneratedSequence:
+        return build_generated_sequence(
+            self.tokenizer,
+            prompt=request.prompt,
+            response="def add",
+            max_response_tokens=request.max_new_tokens,
+            finish_reason="stop",
+            metadata={"engine": "fake"},
+        )
 
 
 if __name__ == "__main__":

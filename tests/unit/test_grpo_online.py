@@ -16,6 +16,7 @@ from codeself.datasets import Split, TaskSpec, TestSpec  # noqa: E402
 from codeself.training import (  # noqa: E402
     GRPOLossConfig,
     GRPOModelTrainingConfig,
+    GRPOOnlineEvaluationConfig,
     GRPOOnlineTrainingConfig,
     GRPORolloutTrainingCycleConfig,
     OptimizerConfig,
@@ -73,8 +74,14 @@ class GRPOOnlineTrainingTests(unittest.TestCase):
                 tokenizer=tokenizer,
                 policy_model=policy_model,
                 old_policy_model=old_policy_model,
+                eval_tasks=[_task()],
                 config=GRPOOnlineTrainingConfig(
                     cycles=2,
+                    evaluation=GRPOOnlineEvaluationConfig(
+                        samples_per_task=1,
+                        max_new_tokens=64,
+                        ks=(1,),
+                    ),
                     cycle=GRPORolloutTrainingCycleConfig(
                         seed=4,
                         rollout=RolloutRuntimeConfig(
@@ -106,6 +113,14 @@ class GRPOOnlineTrainingTests(unittest.TestCase):
             second_policy_state_exists = (
                 artifact_dir / "cycle_0002" / "state" / "policy_model.pt"
             ).exists()
+            first_eval = json.loads(
+                (artifact_dir / "cycle_0001" / "evaluation.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            first_eval_rollouts_exists = (
+                artifact_dir / "cycle_0001" / "eval_rollouts.jsonl"
+            ).exists()
 
         self.assertEqual(result.cycle_count, 2)
         self.assertEqual(result.total_rollouts, 4)
@@ -119,6 +134,10 @@ class GRPOOnlineTrainingTests(unittest.TestCase):
         self.assertEqual(result.steps[1].result.rollouts[0].metadata["online_cycle"], 2)
         self.assertEqual(first_metrics["phase"], "grpo_model_training")
         self.assertTrue(second_checkpoint["has_state_artifacts"])
+        self.assertIsNotNone(result.steps[0].evaluation)
+        self.assertEqual(result.steps[0].evaluation.summary.rollout_count, 1)
+        self.assertEqual(first_eval["rollout_count"], 1)
+        self.assertTrue(first_eval_rollouts_exists)
         self.assertTrue(first_rollouts_exists)
         self.assertTrue(second_policy_state_exists)
         self.assertGreater(result.mean_reward, 0.0)

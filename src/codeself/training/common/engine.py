@@ -222,6 +222,18 @@ class TransformersModelEngine:
     def tokenizer(self) -> TokenizerEngine:
         return self._tokenizer
 
+    @property
+    def model(self) -> Any:
+        """Return the underlying causal-LM module for trainable GRPO paths."""
+
+        return self._model
+
+    @property
+    def raw_tokenizer(self) -> Any:
+        """Return the underlying tokenizer for advanced integration paths."""
+
+        return self._raw_tokenizer
+
     def generate(self, request: GenerationRequest) -> GeneratedSequence:
         if request.seed is not None:
             self._torch.manual_seed(request.seed)

@@ -73,11 +73,14 @@ from codeself.training.grpo_cycle import (
     run_grpo_rollout_training_cycle,
 )
 from codeself.training.grpo_online import (
+    GRPOOnlineEvaluationConfig,
+    GRPOOnlineEvaluationResult,
     GRPOOnlineTrainingConfig,
     GRPOOnlineTrainingResult,
     GRPOOnlineTrainingStep,
     run_grpo_online_training,
 )
+from codeself.training.grpo_policy import ModelEngineCodeGenerator
 from codeself.training.grpo_model import (
     PaddedTrainingTensors,
     build_grpo_tensor_batch_from_model,
@@ -144,6 +147,8 @@ __all__ = [
     "GRPOLossResult",
     "GRPOModelTrainingConfig",
     "GRPOModelTrainingResult",
+    "GRPOOnlineEvaluationConfig",
+    "GRPOOnlineEvaluationResult",
     "GRPOOnlineTrainingConfig",
     "GRPOOnlineTrainingResult",
     "GRPOOnlineTrainingStep",
@@ -163,6 +168,7 @@ __all__ = [
     "JsonlMetricWriter",
     "LogprobSummary",
     "ModelEngine",
+    "ModelEngineCodeGenerator",
     "ModelRuntimeConfig",
     "OptimizerConfig",
     "PPOSmokeConfig",

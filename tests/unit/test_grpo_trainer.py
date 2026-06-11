@@ -100,6 +100,25 @@ class GRPOModelTrainerTests(unittest.TestCase):
         self.assertEqual(result.reference_model_class, "_ToyCausalLM")
         self.assertGreaterEqual(result.loop.mean_kl_loss, 0.0)
 
+    def test_model_training_writes_save_pretrained_artifacts(self) -> None:
+        policy_model = _PretrainedToyCausalLM(vocab_size=8)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir) / "state"
+            result = run_grpo_model_training(
+                (_training_batch(input_ids_a=(1, 2, 3), input_ids_b=(1, 4, 5)),),
+                policy_model=policy_model,
+                config=GRPOModelTrainingConfig(loss=GRPOLossConfig(kl_beta=0.0)),
+                state_dir=state_dir,
+            )
+            artifacts = {artifact.kind: artifact for artifact in result.checkpoint_artifacts}
+
+        self.assertIn("policy_model_state", artifacts)
+        self.assertIn("policy_pretrained:adapter_config.json", artifacts)
+        self.assertIn("policy_pretrained:adapter_model.bin", artifacts)
+        self.assertEqual(len(artifacts["policy_pretrained:adapter_config.json"].sha256), 64)
+        self.assertGreater(artifacts["policy_pretrained:adapter_model.bin"].bytes, 0)
+
     def test_model_training_rejects_model_without_trainable_parameters(self) -> None:
         with self.assertRaises(ValueError):
             run_grpo_model_training(
@@ -144,6 +163,17 @@ class _ToyCausalLM:
 class _NoParameterModel:
     def parameters(self) -> tuple[object, ...]:
         return ()
+
+
+class _PretrainedToyCausalLM(_ToyCausalLM):
+    def save_pretrained(self, path: object) -> None:
+        output_dir = Path(path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "adapter_config.json").write_text(
+            json.dumps({"model_type": "toy_adapter"}),
+            encoding="utf-8",
+        )
+        (output_dir / "adapter_model.bin").write_bytes(b"toy-adapter-state")
 
 
 def _training_batch(

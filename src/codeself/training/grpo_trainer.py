@@ -223,6 +223,11 @@ def _write_state_checkpoint(
     torch.save(policy_model.state_dict(), policy_path)
     artifacts.append(_checkpoint_artifact("policy_model_state", policy_path))
 
+    if hasattr(policy_model, "save_pretrained"):
+        pretrained_dir = output_dir / "policy_pretrained"
+        policy_model.save_pretrained(pretrained_dir)
+        artifacts.extend(_checkpoint_artifacts_for_directory("policy_pretrained", pretrained_dir))
+
     if hasattr(optimizer, "state_dict"):
         optimizer_path = output_dir / "optimizer.pt"
         torch.save(optimizer.state_dict(), optimizer_path)
@@ -234,6 +239,17 @@ def _write_state_checkpoint(
         artifacts.append(_checkpoint_artifact("scheduler_state", scheduler_path))
 
     return tuple(artifacts)
+
+
+def _checkpoint_artifacts_for_directory(
+    kind_prefix: str,
+    directory: Path,
+) -> tuple[GRPOCheckpointArtifact, ...]:
+    return tuple(
+        _checkpoint_artifact(f"{kind_prefix}:{path.relative_to(directory)}", path)
+        for path in sorted(directory.rglob("*"))
+        if path.is_file()
+    )
 
 
 def _checkpoint_artifact(kind: str, path: Path) -> GRPOCheckpointArtifact:
