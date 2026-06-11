@@ -498,12 +498,24 @@ Fourth slice shipped:
   value-head gradients, optimizer updates, detached old/reference models,
   explicit rollout-time value estimates, and missing value-head failures.
 
+Fifth slice shipped:
+
+- Added a minimal PPO training loop over prepared tensor batches.
+- Added `PPOTrainingLoopConfig`, `PPOTrainingLoopStep`, and
+  `PPOTrainingLoopResult` records for microbatch and optimizer-step metrics.
+- Added `run_ppo_training_loop()` to select batches, group them for gradient
+  accumulation, build differentiable tensor batches, call the PPO optimizer-step
+  helper, optionally step a scheduler, and return aggregate diagnostics.
+- Added active Torch tests for gradient accumulation, final partial
+  accumulation groups, scheduler stepping, `max_batches`, value-loss metrics,
+  and empty input validation.
+
 Remaining risks:
 
 - PPO now has dependency-free and Torch objective implementations, an optimizer
-  step, and model/value-head tensor wiring; it still needs a training loop,
-  model-aware trainer, rollout cycle, and online trainer parity with the
-  completed GRPO path.
+  step, model/value-head tensor wiring, and a tensor training loop; it still
+  needs a model-aware trainer, rollout cycle, and online trainer parity with
+  the completed GRPO path.
 - Rollout budget and dev-evaluation parity with GRPO should be enforced once the
   PPO online trainer exists.
 

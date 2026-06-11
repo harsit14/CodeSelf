@@ -139,6 +139,13 @@ from codeself.training.ppo_loss import (
     compute_ppo_loss,
     prepare_ppo_value_targets,
 )
+from codeself.training.ppo_loop import (
+    PPOTensorBatchBuilder,
+    PPOTrainingLoopConfig,
+    PPOTrainingLoopResult,
+    PPOTrainingLoopStep,
+    run_ppo_training_loop,
+)
 from codeself.training.ppo_model import (
     PaddedPPOTrainingTensors,
     build_ppo_tensor_batch_from_model,
@@ -206,7 +213,11 @@ __all__ = [
     "PPOSmokeTrainer",
     "PPOStepMetrics",
     "PPOTensorBatch",
+    "PPOTensorBatchBuilder",
     "PPOTensorLossResult",
+    "PPOTrainingLoopConfig",
+    "PPOTrainingLoopResult",
+    "PPOTrainingLoopStep",
     "PPOValueEstimate",
     "PPOValueTarget",
     "PPOValueTargetResult",
@@ -269,6 +280,7 @@ __all__ = [
     "run_grpo_rollout_training_cycle",
     "run_grpo_training_loop",
     "run_ppo_optimizer_step",
+    "run_ppo_training_loop",
     "select_best_run",
     "summarize_grpo_step",
     "summarize_logprobs",
