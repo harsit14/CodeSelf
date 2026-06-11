@@ -17,6 +17,7 @@ from typing import Any
 from codeself.agent import CodeGenerator, PromptTemplate, RolloutRecord, generate_rollouts
 from codeself.datasets import TaskSpec
 from codeself.evaluation import evaluate_rollouts
+from codeself.rewards import RewardScorer
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class GRPOSmokeConfig:
     temperature: float = 0.8
     top_p: float = 0.95
     include_hidden: bool = True
+    reward_mode: str = "correctness_v0"
     eval_every_steps: int = 1
     stop_if_informative_prompt_fraction_below: float = 0.0
 
@@ -143,11 +145,13 @@ class GRPOSmokeTrainer:
         generator: CodeGenerator,
         prompt_template: PromptTemplate,
         config: GRPOSmokeConfig | None = None,
+        scorer: RewardScorer | None = None,
     ) -> None:
         self.tasks = tasks
         self.generator = generator
         self.prompt_template = prompt_template
         self.config = config or GRPOSmokeConfig()
+        self.scorer = scorer
 
     def run(self) -> GRPOSmokeResult:
         metrics: list[GRPOStepMetrics] = []
@@ -165,6 +169,8 @@ class GRPOSmokeTrainer:
                 temperature=self.config.temperature,
                 top_p=self.config.top_p,
                 include_hidden=self.config.include_hidden,
+                scorer=self.scorer,
+                metadata={"reward_mode": self.config.reward_mode},
             )
             groups = compute_group_advantages(rollouts)
             step_metrics = summarize_grpo_step(step, rollouts, groups)

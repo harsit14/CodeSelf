@@ -6,7 +6,9 @@
   "data": {
     "tasks": "configs/datasets/tasks.example.jsonl",
     "split": "train",
-    "limit": 10
+    "limit": 10,
+    "skip_quality_checks": false,
+    "near_duplicate_threshold": 0.92
   },
   "generation": {
     "backend": "mock",
@@ -20,6 +22,12 @@
     "max_steps": 3,
     "clip_epsilon": 0.2,
     "value_loss_coef": 0.5
+  },
+  "execution": {
+    "include_hidden": true
+  },
+  "reward": {
+    "mode": "correctness_v0"
   },
   "output": {
     "dir": "outputs/checkpoints/ppo_smoke_example"

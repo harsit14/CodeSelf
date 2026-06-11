@@ -149,6 +149,20 @@ Second slice shipped:
 - `configs/experiments/rollout_smoke.example.yaml` now declares data-quality and
   reward settings and is executable through `scripts/run_rollouts.py --config`.
 
+Third slice shipped:
+
+- GRPO and PPO smoke trainers now accept injected reward scorers.
+- `GRPOSmokeConfig` and `PPOSmokeConfig` record the active `reward_mode`.
+- `scripts/train_grpo_smoke.py` and `scripts/train_ppo_smoke.py` now accept
+  `--config` using the same JSON/simple-YAML loader as rollout generation.
+- GRPO/PPO smoke scripts now run dataset quality checks before training unless
+  explicitly disabled.
+- GRPO/PPO smoke scripts now support reward modes and optional shaping flags.
+- Smoke checkpoint manifests now include `reward_mode` and `config_path`.
+- `configs/experiments/grpo_smoke.local.example.json` and
+  `configs/experiments/ppo_smoke.local.example.json` now declare data-quality,
+  execution, and reward settings.
+
 Remaining risks:
 
 - Near-duplicate detection is a simple normalized string similarity check; it
@@ -157,9 +171,8 @@ Remaining risks:
 - Reward-hacking detection is still shallow. The new reward metrics flag empty
   code and repeated lines, but hardcoded visible-test outputs need task-aware
   analysis.
-- Rollout generation still uses the legacy composite reward by default; config
-  selection now exists for rollout generation, but GRPO/PPO smoke scripts still
-  need the same config/reward plumbing.
+- Rollout generation and smoke trainers now share config/reward selection, but
+  the real training-core skeleton still needs to consume the same config fields.
 
 ## Phase 4: Common RL Training Core
 

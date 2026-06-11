@@ -16,6 +16,7 @@ from codeself.rewards.modes import (
     RewardModeConfig,
     RewardScorer,
     make_reward_scorer,
+    make_reward_scorer_from_mode,
 )
 from codeself.rewards.quality import QualityMetrics, measure_quality
 
@@ -33,6 +34,7 @@ __all__ = [
     "RewardWeights",
     "ConfigurableRewardScorer",
     "make_reward_scorer",
+    "make_reward_scorer_from_mode",
     "measure_efficiency",
     "measure_quality",
     "score_correctness",

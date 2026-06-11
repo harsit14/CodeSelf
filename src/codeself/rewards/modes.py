@@ -106,9 +106,34 @@ class ConfigurableRewardScorer:
 
 
 def make_reward_scorer(config: RewardModeConfig | None = None) -> RewardScorer:
-    """Create a reward scorer from config."""
+    """Create a configurable reward scorer from config."""
 
     return ConfigurableRewardScorer(config)
+
+
+def make_reward_scorer_from_mode(
+    mode: str,
+    *,
+    compile_success_bonus: float = 0.0,
+    length_penalty_per_1k_chars: float = 0.0,
+) -> RewardScorer:
+    """Create a reward scorer by mode name.
+
+    `correctness_v0` preserves the original composite reward path.
+    """
+
+    from codeself.rewards.composite import CompositeRewardScorer
+
+    if mode == "correctness_v0":
+        return CompositeRewardScorer()
+    return ConfigurableRewardScorer(
+        RewardModeConfig(
+            mode=mode,
+            name=f"reward_{mode}",
+            compile_success_bonus=compile_success_bonus,
+            length_penalty_per_1k_chars=length_penalty_per_1k_chars,
+        )
+    )
 
 
 def _binary_components(result: TaskRunResult) -> tuple[RewardComponent, ...]:

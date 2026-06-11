@@ -21,6 +21,7 @@ rollout:
 
 reward:
   config: configs/rewards/reward_v0_correctness.yaml
+  mode: correctness_v0
 
 training:
   algorithm: grpo

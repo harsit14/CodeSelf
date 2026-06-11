@@ -20,7 +20,7 @@ from codeself.agent import (  # noqa: E402
 )
 from codeself.config import config_get, load_config_file  # noqa: E402
 from codeself.datasets import Split, TaskRegistry, check_dataset_quality  # noqa: E402
-from codeself.rewards import CompositeRewardScorer, ConfigurableRewardScorer, RewardModeConfig  # noqa: E402
+from codeself.rewards import make_reward_scorer_from_mode  # noqa: E402
 
 
 def main() -> int:
@@ -179,15 +179,10 @@ def _make_scorer(
     compile_success_bonus: float,
     length_penalty_per_1k_chars: float,
 ):
-    if reward_mode == "correctness_v0":
-        return CompositeRewardScorer()
-    return ConfigurableRewardScorer(
-        RewardModeConfig(
-            mode=reward_mode,
-            name=f"reward_{reward_mode}",
-            compile_success_bonus=compile_success_bonus,
-            length_penalty_per_1k_chars=length_penalty_per_1k_chars,
-        )
+    return make_reward_scorer_from_mode(
+        reward_mode,
+        compile_success_bonus=compile_success_bonus,
+        length_penalty_per_1k_chars=length_penalty_per_1k_chars,
     )
 
 

@@ -15,6 +15,7 @@ from typing import Any
 from codeself.agent import CodeGenerator, PromptTemplate, RolloutRecord, generate_rollouts
 from codeself.datasets import TaskSpec
 from codeself.evaluation import evaluate_rollouts
+from codeself.rewards import RewardScorer
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class PPOSmokeConfig:
     temperature: float = 0.8
     top_p: float = 0.95
     include_hidden: bool = True
+    reward_mode: str = "correctness_v0"
     clip_epsilon: float = 0.2
     value_loss_coef: float = 0.5
 
@@ -110,11 +112,13 @@ class PPOSmokeTrainer:
         generator: CodeGenerator,
         prompt_template: PromptTemplate,
         config: PPOSmokeConfig | None = None,
+        scorer: RewardScorer | None = None,
     ) -> None:
         self.tasks = tasks
         self.generator = generator
         self.prompt_template = prompt_template
         self.config = config or PPOSmokeConfig()
+        self.scorer = scorer
 
     def run(self) -> PPOSmokeResult:
         metrics: list[PPOStepMetrics] = []
@@ -130,6 +134,8 @@ class PPOSmokeTrainer:
                 temperature=self.config.temperature,
                 top_p=self.config.top_p,
                 include_hidden=self.config.include_hidden,
+                scorer=self.scorer,
+                metadata={"reward_mode": self.config.reward_mode},
             )
             metrics.append(summarize_ppo_step(step, rollouts, self.config))
             last_rollouts = rollouts
