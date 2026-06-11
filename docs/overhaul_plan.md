@@ -430,13 +430,34 @@ Phase 5 completion note:
 
 ## Phase 6: PPO Baseline
 
-Status: pending
+Status: started
 
 Goals:
 
-- Add a value head.
-- Implement GAE, clipped policy loss, clipped value loss, entropy, and KL.
+- Add a value head. Started with value-estimate records.
+- Implement GAE, clipped policy loss, clipped value loss, entropy, and KL. Started.
 - Match rollout budgets and evaluation protocol with GRPO.
+
+First slice shipped:
+
+- Added dependency-free PPO value-target and loss helpers.
+- Added `PPOLossConfig` with policy clipping, value clipping, value-loss weight,
+  entropy bonus, optional reference KL, gamma, GAE lambda, and advantage
+  normalization settings.
+- Added `PPOValueEstimate`, `PPOValueTarget`, and `PPOValueTargetResult` records
+  to compute sparse-final-reward GAE over response tokens.
+- Added `compute_ppo_loss()` with clipped policy loss, clipped value loss,
+  entropy loss, and optional reference-model KL over response tokens only.
+- Added tests for GAE targets, policy/value clipping, entropy, reference KL,
+  advantage normalization, and validation failures.
+
+Remaining risks:
+
+- PPO is currently a dependency-free objective reference; it still needs a Torch
+  tensor implementation, value-head model wiring, optimizer step, and online
+  trainer parity with the completed GRPO path.
+- Rollout budget and dev-evaluation parity with GRPO should be enforced once the
+  PPO online trainer exists.
 
 ## Phase 7: Evaluation, Statistics, And Dashboard
 
