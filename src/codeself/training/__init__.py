@@ -61,6 +61,12 @@ from codeself.training.grpo_loss import (
     assign_group_relative_advantages,
     compute_grpo_loss,
 )
+from codeself.training.grpo_model import (
+    PaddedTrainingTensors,
+    build_grpo_tensor_batch_from_model,
+    gather_causal_lm_token_logprobs,
+    pad_training_batch_tensors,
+)
 from codeself.training.grpo_loop import (
     GRPOTrainingLoopConfig,
     GRPOTrainingLoopResult,
@@ -130,6 +136,7 @@ __all__ = [
     "PPOSmokeResult",
     "PPOSmokeTrainer",
     "PPOStepMetrics",
+    "PaddedTrainingTensors",
     "RolloutRuntimeConfig",
     "SequenceTrainingSample",
     "TensorBatchBuilder",
@@ -151,6 +158,7 @@ __all__ = [
     "assign_group_relative_advantages",
     "backend_availability",
     "build_generated_sequence",
+    "build_grpo_tensor_batch_from_model",
     "build_grpo_tensor_batch",
     "build_prompt_response_mask",
     "build_grpo_experiment_matrix",
@@ -161,10 +169,12 @@ __all__ = [
     "compute_grpo_tensor_loss",
     "encode_prompt_response",
     "encode_text",
+    "gather_causal_lm_token_logprobs",
     "get_backend_spec",
     "list_backend_specs",
     "mask_mean",
     "mask_sum",
+    "pad_training_batch_tensors",
     "read_last_metric",
     "require_torch",
     "run_grpo_optimizer_step",

@@ -305,15 +305,31 @@ Fourth slice shipped:
 - Validation now runs the Torch GRPO tests in a local `.venv` without
   dependency-related skips.
 
+Fifth slice shipped:
+
+- Added a model-facing GRPO tensor batch builder for Torch causal-LM modules.
+- Added `PaddedTrainingTensors` and `pad_training_batch_tensors()` to convert
+  `TrainingBatch` records into padded `input_ids`, attention masks, response
+  masks, advantages, and optional old/reference logprob tensors.
+- Added `gather_causal_lm_token_logprobs()` to collect next-token logprobs from
+  `[batch, tokens, vocab]` logits while preserving token alignment with the
+  packed prompt/response sequence.
+- Added `build_grpo_tensor_batch_from_model()` to run policy, optional
+  old-policy, and optional reference forward passes and return a differentiable
+  `GRPOTensorBatch`.
+- Added active Torch tests with a tiny toy causal-LM parameter table, including
+  a test that drives the existing GRPO training loop through the model-facing
+  tensor batch builder.
+
 Remaining risks:
 
 - This updates optimizer parameters for prepared tensor batches when Torch is
   installed and now has a microbatch loop, but it is not yet a full model
   training loop.
-- Old-policy and reference logprobs still need to be produced by real model
-  engines during rollout collection.
-- Scheduler stepping, checkpointing, LoRA attachment, and model-forward logprob
-  extraction from a causal LM are not wired yet.
+- Old-policy and reference logprobs can now come from records or optional model
+  forward passes, but they are not yet connected to rollout collection.
+- Scheduler stepping is supported, but checkpointing, LoRA attachment, and a
+  Transformers-backed causal-LM trainer are not wired yet.
 - Group sampling is still represented by batch grouping rather than a full
   generate -> execute -> score -> optimize loop.
 
