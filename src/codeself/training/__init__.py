@@ -72,6 +72,12 @@ from codeself.training.grpo_cycle import (
     GRPORolloutTrainingCycleResult,
     run_grpo_rollout_training_cycle,
 )
+from codeself.training.grpo_online import (
+    GRPOOnlineTrainingConfig,
+    GRPOOnlineTrainingResult,
+    GRPOOnlineTrainingStep,
+    run_grpo_online_training,
+)
 from codeself.training.grpo_model import (
     PaddedTrainingTensors,
     build_grpo_tensor_batch_from_model,
@@ -138,6 +144,9 @@ __all__ = [
     "GRPOLossResult",
     "GRPOModelTrainingConfig",
     "GRPOModelTrainingResult",
+    "GRPOOnlineTrainingConfig",
+    "GRPOOnlineTrainingResult",
+    "GRPOOnlineTrainingStep",
     "GRPOOptimizerStepConfig",
     "GRPOOptimizerStepResult",
     "GRPOSampleLoss",
@@ -204,6 +213,7 @@ __all__ = [
     "read_last_metric",
     "require_torch",
     "run_grpo_model_training",
+    "run_grpo_online_training",
     "run_grpo_optimizer_step",
     "run_grpo_rollout_training_cycle",
     "run_grpo_training_loop",

@@ -378,11 +378,25 @@ Ninth slice shipped:
 - Added a Torch-backed unit test that runs the full cycle with a tiny model,
   writes rollout/metric/checkpoint artifacts, and verifies a parameter update.
 
+Tenth slice shipped:
+
+- Added `run_grpo_online_training()` as a repeated collect -> execute -> score
+  -> optimize loop over multiple GRPO rollout-training cycles.
+- Added `GRPOOnlineTrainingConfig`, per-cycle seed progression, per-cycle result
+  summaries, and aggregate rollout/optimizer-step/reward diagnostics.
+- The online runner creates one optimizer when the caller does not provide one,
+  preserving optimizer state across cycles instead of rebuilding AdamW each
+  cycle.
+- Added cycle-scoped artifact directories with rollout JSONL, metrics,
+  checkpoint manifests, and Torch state files for each online cycle.
+- Added a Torch-backed unit test that runs two full cycles and verifies artifact
+  layout, seed progression, optimizer steps, and parameter updates.
+
 Remaining risks:
 
-- This now supports a single collect -> execute -> score -> optimize cycle, but
-  it is not yet a multi-step online trainer with policy snapshots, evaluation,
-  and scheduler/checkpoint cadence across many cycles.
+- This now supports repeated online cycles with artifact cadence, but it still
+  does not snapshot an old-policy model between cycles or run dev-set evaluation
+  between updates.
 - Old-policy and reference logprobs can now come from records or optional model
   forward passes, but old-policy logprob capture during rollout collection is
   still not wired.
