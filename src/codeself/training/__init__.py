@@ -67,6 +67,11 @@ from codeself.training.grpo_rollouts import (
     SkippedRollout,
     build_grpo_training_batch_from_rollouts,
 )
+from codeself.training.grpo_cycle import (
+    GRPORolloutTrainingCycleConfig,
+    GRPORolloutTrainingCycleResult,
+    run_grpo_rollout_training_cycle,
+)
 from codeself.training.grpo_model import (
     PaddedTrainingTensors,
     build_grpo_tensor_batch_from_model,
@@ -126,6 +131,8 @@ __all__ = [
     "GRPOGroupAdvantage",
     "GRPORolloutBatchConfig",
     "GRPORolloutBatchResult",
+    "GRPORolloutTrainingCycleConfig",
+    "GRPORolloutTrainingCycleResult",
     "GRPOCheckpointArtifact",
     "GRPOLossConfig",
     "GRPOLossResult",
@@ -198,6 +205,7 @@ __all__ = [
     "require_torch",
     "run_grpo_model_training",
     "run_grpo_optimizer_step",
+    "run_grpo_rollout_training_cycle",
     "run_grpo_training_loop",
     "select_best_run",
     "summarize_grpo_step",

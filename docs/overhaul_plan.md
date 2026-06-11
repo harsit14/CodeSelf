@@ -362,20 +362,36 @@ Eighth slice shipped:
 - Added metadata carry-through for backend, model name, parse status, reward
   name, execution pass/fail, truncation, and scalar rollout/generation fields.
 
+Ninth slice shipped:
+
+- Added `run_grpo_rollout_training_cycle()` as the first collect -> batch ->
+  optimize orchestration layer for real GRPO.
+- The cycle calls the existing rollout generator, optionally writes rollout
+  JSONL, converts rollouts into a GRPO `TrainingBatch`, then runs the
+  model-aware GRPO trainer.
+- Added `GRPORolloutTrainingCycleConfig` to bind sampling settings, rollout
+  batch settings, hidden-test inclusion, seed, and model-training settings in
+  one object.
+- The cycle defaults to `kl_beta=0.0` so it can run without a reference model;
+  callers can still pass a reference model and nonzero KL through the existing
+  training config.
+- Added a Torch-backed unit test that runs the full cycle with a tiny model,
+  writes rollout/metric/checkpoint artifacts, and verifies a parameter update.
+
 Remaining risks:
 
-- This now updates parameters through a model-aware trainer for Torch modules
-  and can consume generated rollout records, but it is not yet a single
-  generate -> execute -> optimize loop.
+- This now supports a single collect -> execute -> score -> optimize cycle, but
+  it is not yet a multi-step online trainer with policy snapshots, evaluation,
+  and scheduler/checkpoint cadence across many cycles.
 - Old-policy and reference logprobs can now come from records or optional model
   forward passes, but old-policy logprob capture during rollout collection is
   still not wired.
 - Scheduler stepping and Torch state checkpointing are supported, but LoRA
   adapter-specific checkpointing and a Transformers-backed causal-LM trainer are
   not wired yet.
-- Group sampling is represented by grouped rollout records. The trainer still
-  needs a live collector that samples multiple completions per prompt from the
-  current policy before each optimize step.
+- The cycle can use grouped rollout records, but the current generator and
+  policy model are still separate objects unless the caller wires them to the
+  same underlying Transformers model.
 
 ## Phase 6: PPO Baseline
 
