@@ -234,16 +234,40 @@ Remaining risks:
 
 ## Phase 5: Real GRPO
 
-Status: pending
+Status: started
 
 Goals:
 
 - Implement group sampling per prompt.
-- Normalize group-relative advantages.
-- Use clipped policy-gradient loss over response tokens only.
+- Normalize group-relative advantages. Started.
+- Use clipped policy-gradient loss over response tokens only. Started.
 - Penalize or constrain KL against a frozen reference model.
 - Periodically evaluate on a dev slice.
 - Write checkpoints, metrics, rollouts, and reproducibility metadata.
+
+First slice shipped:
+
+- Added dependency-free GRPO advantage assignment for `TrainingBatch` records,
+  grouped by task/prompt ID.
+- Added normalized group-relative advantages with zero-variance groups mapped to
+  zero advantage.
+- Added a clipped GRPO surrogate loss over response tokens only.
+- Added optional reference-model KL penalty using the same token-aligned
+  logprob records introduced in Phase 4.
+- Added batch and per-sample diagnostics for policy loss, KL loss, total loss,
+  mean ratio, clipped ratio, approximate KL, and clipped-token fraction.
+- Kept the implementation in plain Python floats so the objective can be tested
+  before moving it into Torch tensors.
+
+Remaining risks:
+
+- This is not yet a tensorized training step and does not update weights.
+- Old-policy and reference logprobs still need to be produced by real model
+  engines during rollout collection.
+- The loss helper uses scalar diagnostics only; the eventual trainer needs
+  backpropagating Torch tensors with the same masking behavior.
+- Group sampling is still represented by batch grouping rather than a full
+  generate -> execute -> score -> optimize loop.
 
 ## Phase 6: PPO Baseline
 

@@ -52,6 +52,15 @@ from codeself.training.experiments import (
     write_experiment_summary_json,
     write_experiment_table,
 )
+from codeself.training.grpo_loss import (
+    GRPOAdvantageResult,
+    GRPOGroupAdvantage,
+    GRPOLossConfig,
+    GRPOLossResult,
+    GRPOSampleLoss,
+    assign_group_relative_advantages,
+    compute_grpo_loss,
+)
 from codeself.training.smoke.grpo import (
     GRPOSmokeConfig,
     GRPOSmokeResult,
@@ -75,6 +84,11 @@ __all__ = [
     "BackendSpec",
     "GeneratedSequence",
     "GenerationRequest",
+    "GRPOAdvantageResult",
+    "GRPOGroupAdvantage",
+    "GRPOLossConfig",
+    "GRPOLossResult",
+    "GRPOSampleLoss",
     "GRPOSmokeConfig",
     "GRPOSmokeResult",
     "GRPOSmokeTrainer",
@@ -106,6 +120,7 @@ __all__ = [
     "ExperimentRunSummary",
     "ExperimentVariant",
     "aggregate_by_variant_name",
+    "assign_group_relative_advantages",
     "backend_availability",
     "build_generated_sequence",
     "build_prompt_response_mask",
@@ -113,6 +128,7 @@ __all__ = [
     "build_training_core_config",
     "compare_algorithm_metrics",
     "compute_group_advantages",
+    "compute_grpo_loss",
     "encode_prompt_response",
     "encode_text",
     "get_backend_spec",
