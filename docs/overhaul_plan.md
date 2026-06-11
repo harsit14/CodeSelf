@@ -451,11 +451,26 @@ First slice shipped:
 - Added tests for GAE targets, policy/value clipping, entropy, reference KL,
   advantage normalization, and validation failures.
 
+Second slice shipped:
+
+- Added an optional Torch implementation of the PPO objective behind a lazy
+  import boundary.
+- Added `PPOTensorBatch` and `PPOTensorLossResult` records for differentiable
+  policy, value, entropy, and KL loss computation.
+- Added `build_ppo_tensor_batch()` to convert `TrainingBatch` records and PPO
+  value estimates into padded policy, old-policy, response-mask, advantage,
+  return, value, old-value, entropy, and optional reference tensors.
+- Added `compute_ppo_tensor_loss()` with the same response-token masking,
+  policy clipping, value clipping, entropy bonus, and reference-KL semantics as
+  the dependency-free reference implementation.
+- Added active Torch tests for numerical parity with the reference objective,
+  variable-length padding, and differentiability through policy and value terms.
+
 Remaining risks:
 
-- PPO is currently a dependency-free objective reference; it still needs a Torch
-  tensor implementation, value-head model wiring, optimizer step, and online
-  trainer parity with the completed GRPO path.
+- PPO now has dependency-free and Torch objective implementations; it still
+  needs value-head model wiring, optimizer step, and online trainer parity with
+  the completed GRPO path.
 - Rollout budget and dev-evaluation parity with GRPO should be enforced once the
   PPO online trainer exists.
 
