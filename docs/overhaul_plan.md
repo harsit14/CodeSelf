@@ -289,14 +289,31 @@ Third slice shipped:
 - Added tests for config validation, missing-Torch behavior, and real optimizer
   parameter updates when Torch is installed.
 
+Fourth slice shipped:
+
+- Added a minimal GRPO training loop over prepared tensor batches.
+- Added `GRPOTrainingLoopConfig`, `GRPOTrainingLoopStep`, and
+  `GRPOTrainingLoopResult` records for microbatch and optimizer-step metrics.
+- Added `run_grpo_training_loop()` to select batches, group them for gradient
+  accumulation, build differentiable tensor batches, call the optimizer-step
+  helper, optionally step a scheduler, and return aggregate metrics.
+- Added tests for active Torch gradient accumulation, final partial
+  accumulation groups, scheduler stepping, `max_batches`, and empty input
+  validation.
+- Added `numpy` to the optional training extra after the local Torch-enabled
+  validation environment warned without it.
+- Validation now runs the Torch GRPO tests in a local `.venv` without
+  dependency-related skips.
+
 Remaining risks:
 
 - This updates optimizer parameters for prepared tensor batches when Torch is
-  installed, but it is not yet a full model training loop.
+  installed and now has a microbatch loop, but it is not yet a full model
+  training loop.
 - Old-policy and reference logprobs still need to be produced by real model
   engines during rollout collection.
 - Scheduler stepping, checkpointing, LoRA attachment, and model-forward logprob
-  extraction are not wired yet.
+  extraction from a causal LM are not wired yet.
 - Group sampling is still represented by batch grouping rather than a full
   generate -> execute -> score -> optimize loop.
 

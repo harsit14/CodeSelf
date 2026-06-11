@@ -61,6 +61,13 @@ from codeself.training.grpo_loss import (
     assign_group_relative_advantages,
     compute_grpo_loss,
 )
+from codeself.training.grpo_loop import (
+    GRPOTrainingLoopConfig,
+    GRPOTrainingLoopResult,
+    GRPOTrainingLoopStep,
+    TensorBatchBuilder,
+    run_grpo_training_loop,
+)
 from codeself.training.grpo_step import (
     GRPOOptimizerStepConfig,
     GRPOOptimizerStepResult,
@@ -110,6 +117,9 @@ __all__ = [
     "GRPOStepMetrics",
     "GRPOTensorBatch",
     "GRPOTensorLossResult",
+    "GRPOTrainingLoopConfig",
+    "GRPOTrainingLoopResult",
+    "GRPOTrainingLoopStep",
     "GroupAdvantage",
     "JsonlMetricWriter",
     "LogprobSummary",
@@ -122,6 +132,7 @@ __all__ = [
     "PPOStepMetrics",
     "RolloutRuntimeConfig",
     "SequenceTrainingSample",
+    "TensorBatchBuilder",
     "TokenizedPromptResponse",
     "TokenizedText",
     "TokenizerEngine",
@@ -157,6 +168,7 @@ __all__ = [
     "read_last_metric",
     "require_torch",
     "run_grpo_optimizer_step",
+    "run_grpo_training_loop",
     "select_best_run",
     "summarize_grpo_step",
     "summarize_logprobs",

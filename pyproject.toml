@@ -22,6 +22,7 @@ dev = [
 training = [
   "accelerate",
   "datasets",
+  "numpy",
   "peft",
   "torch",
   "transformers",

@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.training import (  # noqa: E402
+    GRPOLossConfig,
     GRPOOptimizerStepConfig,
     GRPOTensorBatch,
     SequenceTrainingSample,
@@ -32,18 +33,27 @@ class GRPOStepTests(unittest.TestCase):
 
     def test_optimizer_step_reports_missing_torch_cleanly(self) -> None:
         if torch_training_available():
-            self.skipTest("Torch is installed in this environment")
-
-        with self.assertRaisesRegex(RuntimeError, "optional training dependency"):
-            run_grpo_optimizer_step(
-                GRPOTensorBatch(
-                    policy_logprobs=None,
-                    old_policy_logprobs=None,
-                    response_mask=None,
-                    advantages=None,
-                ),
-                optimizer=_FakeOptimizer(),
-            )
+            with self.assertRaises(TypeError):
+                run_grpo_optimizer_step(
+                    GRPOTensorBatch(
+                        policy_logprobs=None,
+                        old_policy_logprobs=None,
+                        response_mask=None,
+                        advantages=None,
+                    ),
+                    optimizer=_FakeOptimizer(),
+                )
+        else:
+            with self.assertRaisesRegex(RuntimeError, "optional training dependency"):
+                run_grpo_optimizer_step(
+                    GRPOTensorBatch(
+                        policy_logprobs=None,
+                        old_policy_logprobs=None,
+                        response_mask=None,
+                        advantages=None,
+                    ),
+                    optimizer=_FakeOptimizer(),
+                )
 
     @unittest.skipUnless(torch_training_available(), "Torch is an optional training dependency")
     def test_optimizer_step_backprops_and_updates_parameter(self) -> None:
@@ -101,7 +111,10 @@ class GRPOStepTests(unittest.TestCase):
         result = run_grpo_optimizer_step(
             tensor_batch,
             optimizer=optimizer,
-            config=GRPOOptimizerStepConfig(max_grad_norm=None),
+            config=GRPOOptimizerStepConfig(
+                loss=GRPOLossConfig(kl_beta=0.0),
+                max_grad_norm=None,
+            ),
         )
 
         self.assertEqual(result.total_response_tokens, 4)

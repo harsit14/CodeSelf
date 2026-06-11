@@ -29,10 +29,10 @@ class GRPOTorchTests(unittest.TestCase):
 
     def test_require_torch_reports_missing_optional_dependency(self) -> None:
         if torch_training_available():
-            self.skipTest("Torch is installed in this environment")
-
-        with self.assertRaisesRegex(RuntimeError, "optional training dependency"):
-            require_torch()
+            self.assertEqual(require_torch().__name__, "torch")
+        else:
+            with self.assertRaisesRegex(RuntimeError, "optional training dependency"):
+                require_torch()
 
     @unittest.skipUnless(torch_training_available(), "Torch is an optional training dependency")
     def test_tensor_loss_matches_reference_loss(self) -> None:

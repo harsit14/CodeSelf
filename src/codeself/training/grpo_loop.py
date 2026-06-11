@@ -1,0 +1,192 @@
+"""Minimal GRPO training loop over prepared tensor batches."""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field, replace
+from statistics import fmean
+from typing import Any
+
+from codeself.training.common import TrainingBatch
+from codeself.training.grpo_step import (
+    GRPOOptimizerStepConfig,
+    GRPOOptimizerStepResult,
+    run_grpo_optimizer_step,
+)
+from codeself.training.grpo_torch import GRPOTensorBatch
+
+TensorBatchBuilder = Callable[[TrainingBatch], GRPOTensorBatch]
+
+
+@dataclass(frozen=True)
+class GRPOTrainingLoopConfig:
+    """Settings for a minimal GRPO tensor training loop."""
+
+    optimizer_step: GRPOOptimizerStepConfig = field(default_factory=GRPOOptimizerStepConfig)
+    max_batches: int | None = None
+    step_scheduler: bool = True
+
+    def __post_init__(self) -> None:
+        if self.max_batches is not None and self.max_batches <= 0:
+            raise ValueError("max_batches must be positive when set")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "optimizer_step": self.optimizer_step.to_dict(),
+            "max_batches": self.max_batches,
+            "step_scheduler": self.step_scheduler,
+        }
+
+
+@dataclass(frozen=True)
+class GRPOTrainingLoopStep:
+    """Metrics for one microbatch in a GRPO training loop."""
+
+    step: int
+    accumulation_index: int
+    accumulation_size: int
+    optimizer_step_index: int | None
+    scheduler_step: bool
+    metrics: GRPOOptimizerStepResult
+
+    @property
+    def optimizer_step(self) -> bool:
+        return self.metrics.optimizer_step
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "step": self.step,
+            "accumulation_index": self.accumulation_index,
+            "accumulation_size": self.accumulation_size,
+            "optimizer_step_index": self.optimizer_step_index,
+            "optimizer_step": self.optimizer_step,
+            "scheduler_step": self.scheduler_step,
+            "metrics": self.metrics.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class GRPOTrainingLoopResult:
+    """Summary of a minimal GRPO training loop run."""
+
+    config: GRPOTrainingLoopConfig
+    steps: tuple[GRPOTrainingLoopStep, ...]
+
+    def __post_init__(self) -> None:
+        if not self.steps:
+            raise ValueError("GRPOTrainingLoopResult requires at least one step")
+
+    @property
+    def microbatch_count(self) -> int:
+        return len(self.steps)
+
+    @property
+    def optimizer_step_count(self) -> int:
+        return sum(1 for step in self.steps if step.optimizer_step)
+
+    @property
+    def mean_loss(self) -> float:
+        return fmean(step.metrics.loss for step in self.steps)
+
+    @property
+    def mean_policy_loss(self) -> float:
+        return fmean(step.metrics.policy_loss for step in self.steps)
+
+    @property
+    def mean_kl_loss(self) -> float:
+        return fmean(step.metrics.kl_loss for step in self.steps)
+
+    @property
+    def total_response_tokens(self) -> int:
+        return sum(step.metrics.total_response_tokens for step in self.steps)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "config": self.config.to_dict(),
+            "microbatch_count": self.microbatch_count,
+            "optimizer_step_count": self.optimizer_step_count,
+            "mean_loss": self.mean_loss,
+            "mean_policy_loss": self.mean_policy_loss,
+            "mean_kl_loss": self.mean_kl_loss,
+            "total_response_tokens": self.total_response_tokens,
+            "steps": [step.to_dict() for step in self.steps],
+        }
+
+
+def run_grpo_training_loop(
+    batches: Iterable[TrainingBatch],
+    *,
+    tensor_batch_builder: TensorBatchBuilder,
+    optimizer: Any,
+    scheduler: Any | None = None,
+    config: GRPOTrainingLoopConfig | None = None,
+) -> GRPOTrainingLoopResult:
+    """Run a minimal GRPO training loop over prepared training batches."""
+
+    loop_config = config or GRPOTrainingLoopConfig()
+    selected_batches = _select_batches(batches, loop_config.max_batches)
+    if not selected_batches:
+        raise ValueError("run_grpo_training_loop requires at least one batch")
+
+    steps: list[GRPOTrainingLoopStep] = []
+    optimizer_step_index = 0
+    global_step = 0
+    accumulation_size = loop_config.optimizer_step.gradient_accumulation_steps
+    for group in _chunks(selected_batches, accumulation_size):
+        effective_accumulation_size = len(group)
+        for index, batch in enumerate(group, start=1):
+            global_step += 1
+            should_step = index == effective_accumulation_size
+            step_config = replace(
+                loop_config.optimizer_step,
+                gradient_accumulation_steps=effective_accumulation_size,
+                zero_grad=index == 1 and loop_config.optimizer_step.zero_grad,
+                step_optimizer=should_step and loop_config.optimizer_step.step_optimizer,
+            )
+            tensor_batch = tensor_batch_builder(batch)
+            metrics = run_grpo_optimizer_step(
+                tensor_batch,
+                optimizer=optimizer,
+                config=step_config,
+            )
+            scheduler_step = False
+            if scheduler is not None and should_step and loop_config.step_scheduler:
+                scheduler.step()
+                scheduler_step = True
+            if metrics.optimizer_step:
+                optimizer_step_index += 1
+                current_optimizer_step = optimizer_step_index
+            else:
+                current_optimizer_step = None
+            steps.append(
+                GRPOTrainingLoopStep(
+                    step=global_step,
+                    accumulation_index=index,
+                    accumulation_size=effective_accumulation_size,
+                    optimizer_step_index=current_optimizer_step,
+                    scheduler_step=scheduler_step,
+                    metrics=metrics,
+                )
+            )
+
+    return GRPOTrainingLoopResult(config=loop_config, steps=tuple(steps))
+
+
+def _select_batches(
+    batches: Iterable[TrainingBatch],
+    max_batches: int | None,
+) -> tuple[TrainingBatch, ...]:
+    selected: list[TrainingBatch] = []
+    for batch in batches:
+        selected.append(batch)
+        if max_batches is not None and len(selected) >= max_batches:
+            break
+    return tuple(selected)
+
+
+def _chunks(
+    batches: tuple[TrainingBatch, ...],
+    chunk_size: int,
+) -> Iterable[tuple[TrainingBatch, ...]]:
+    for start in range(0, len(batches), chunk_size):
+        yield batches[start : start + chunk_size]
