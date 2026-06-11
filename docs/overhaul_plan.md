@@ -243,7 +243,8 @@ Goals:
 - Use clipped policy-gradient loss over response tokens only. Started.
 - Penalize or constrain KL against a frozen reference model. Started.
 - Periodically evaluate on a dev slice.
-- Write checkpoints, metrics, rollouts, and reproducibility metadata.
+- Write checkpoints, metrics, rollouts, and reproducibility metadata. Started
+  with optimizer-step metrics.
 
 First slice shipped:
 
@@ -275,13 +276,27 @@ Second slice shipped:
 - Added tests that verify missing-Torch behavior now and numerical parity with
   the reference implementation when Torch is installed.
 
+Third slice shipped:
+
+- Added a lazy optional Torch GRPO optimizer-step helper over prepared tensor
+  batches.
+- Added `GRPOOptimizerStepConfig` for loss config, gradient accumulation,
+  gradient clipping, zero-grad behavior, and optimizer stepping.
+- Added `GRPOOptimizerStepResult` with detached optimizer-step diagnostics.
+- `run_grpo_optimizer_step()` now computes the tensor GRPO loss, scales it for
+  gradient accumulation, calls backward, optionally clips gradients, optionally
+  steps the optimizer, and returns metrics.
+- Added tests for config validation, missing-Torch behavior, and real optimizer
+  parameter updates when Torch is installed.
+
 Remaining risks:
 
-- This is not yet a full training step and does not update weights.
+- This updates optimizer parameters for prepared tensor batches when Torch is
+  installed, but it is not yet a full model training loop.
 - Old-policy and reference logprobs still need to be produced by real model
   engines during rollout collection.
-- The tensor loss is ready for backpropagation, but no optimizer, scheduler,
-  gradient accumulation, checkpointing, or LoRA attachment is wired yet.
+- Scheduler stepping, checkpointing, LoRA attachment, and model-forward logprob
+  extraction are not wired yet.
 - Group sampling is still represented by batch grouping rather than a full
   generate -> execute -> score -> optimize loop.
 

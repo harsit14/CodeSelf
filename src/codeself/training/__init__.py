@@ -61,6 +61,11 @@ from codeself.training.grpo_loss import (
     assign_group_relative_advantages,
     compute_grpo_loss,
 )
+from codeself.training.grpo_step import (
+    GRPOOptimizerStepConfig,
+    GRPOOptimizerStepResult,
+    run_grpo_optimizer_step,
+)
 from codeself.training.grpo_torch import (
     GRPOTensorBatch,
     GRPOTensorLossResult,
@@ -96,6 +101,8 @@ __all__ = [
     "GRPOGroupAdvantage",
     "GRPOLossConfig",
     "GRPOLossResult",
+    "GRPOOptimizerStepConfig",
+    "GRPOOptimizerStepResult",
     "GRPOSampleLoss",
     "GRPOSmokeConfig",
     "GRPOSmokeResult",
@@ -149,6 +156,7 @@ __all__ = [
     "mask_sum",
     "read_last_metric",
     "require_torch",
+    "run_grpo_optimizer_step",
     "select_best_run",
     "summarize_grpo_step",
     "summarize_logprobs",
