@@ -12,7 +12,7 @@ from codeself.agent.parser import ParseStatus, ParsedCompletion, extract_code
 from codeself.agent.prompts import PromptTemplate
 from codeself.datasets import TaskSpec
 from codeself.execution import SandboxedTestRunner
-from codeself.rewards import CompositeRewardScorer
+from codeself.rewards import CompositeRewardScorer, RewardScorer
 
 
 @dataclass(frozen=True)
@@ -89,9 +89,12 @@ def generate_rollouts(
     temperature: float,
     top_p: float,
     include_hidden: bool,
+    scorer: RewardScorer | None = None,
+    runner: SandboxedTestRunner | None = None,
+    metadata: dict[str, str | int | float | bool] | None = None,
 ) -> list[RolloutRecord]:
-    runner = SandboxedTestRunner()
-    scorer = CompositeRewardScorer()
+    active_runner = runner or SandboxedTestRunner()
+    active_scorer = scorer or CompositeRewardScorer()
     records: list[RolloutRecord] = []
     for task in tasks:
         prompt = prompt_template.render(task)
@@ -108,8 +111,8 @@ def generate_rollouts(
             )
             generation = generator.generate(request)
             parsed = extract_code(generation.text)
-            execution_result = runner.run(task, parsed.code, include_hidden=include_hidden)
-            reward = scorer.score(execution_result, solution_code=parsed.code)
+            execution_result = active_runner.run(task, parsed.code, include_hidden=include_hidden)
+            reward = active_scorer.score(execution_result, solution_code=parsed.code)
             records.append(
                 RolloutRecord(
                     task_id=task.task_id,
@@ -126,6 +129,7 @@ def generate_rollouts(
                     metadata={
                         "seed": seed,
                         "include_hidden": include_hidden,
+                        **(metadata or {}),
                     },
                 )
             )

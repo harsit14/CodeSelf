@@ -133,6 +133,22 @@ First slice shipped:
 - Added `configs/rewards/reward_modes.example.json` to document the first
   pluggable reward choices.
 
+Second slice shipped:
+
+- Added a dependency-free config loader for JSON and the simple YAML subset used
+  by repository experiment configs.
+- `scripts/run_rollouts.py` now accepts `--config` and can read task path,
+  split, generation settings, prompt template, execution settings, reward mode,
+  and output path from config.
+- CLI values override config values when provided, preserving the old direct
+  command style.
+- Rollout generation now accepts an injected reward scorer and records
+  `reward_mode`/`config_path` metadata on each rollout.
+- `run_rollouts.py` runs dataset quality checks before generating rollouts
+  unless explicitly disabled.
+- `configs/experiments/rollout_smoke.example.yaml` now declares data-quality and
+  reward settings and is executable through `scripts/run_rollouts.py --config`.
+
 Remaining risks:
 
 - Near-duplicate detection is a simple normalized string similarity check; it
@@ -142,7 +158,8 @@ Remaining risks:
   code and repeated lines, but hardcoded visible-test outputs need task-aware
   analysis.
 - Rollout generation still uses the legacy composite reward by default; config
-  selection of reward modes should be wired into experiment configs next.
+  selection now exists for rollout generation, but GRPO/PPO smoke scripts still
+  need the same config/reward plumbing.
 
 ## Phase 4: Common RL Training Core
 

@@ -73,6 +73,40 @@ class AgentRolloutTests(unittest.TestCase):
         self.assertEqual(records[0].reward["reward"], 1.0)
         self.assertTrue(records[0].execution["passed"])
 
+    def test_generate_rollouts_accepts_custom_reward_scorer(self) -> None:
+        from codeself.rewards import ConfigurableRewardScorer, RewardModeConfig
+
+        task = TaskSpec(
+            task_id="agent/fractional",
+            source="unit-test",
+            prompt="Write add_one(x).",
+            split=Split.TRAIN,
+            entry_point="add_one",
+            public_tests=(
+                TestSpec(name="public-pass", code="assert add_one(1) == 2"),
+                TestSpec(name="public-fail", code="assert add_one(2) == 4"),
+            ),
+            hidden_tests=(),
+        )
+        records = generate_rollouts(
+            [task],
+            generator=StaticGenerator("```python\ndef add_one(x):\n    return x + 1\n```"),
+            prompt_template=DIRECT_SOLUTION_TEMPLATE,
+            samples_per_task=1,
+            seed=1,
+            max_new_tokens=128,
+            temperature=0.0,
+            top_p=1.0,
+            include_hidden=True,
+            scorer=ConfigurableRewardScorer(
+                RewardModeConfig(mode="fractional_pass_rate", name="fractional")
+            ),
+            metadata={"reward_mode": "fractional_pass_rate"},
+        )
+
+        self.assertEqual(records[0].reward["reward"], 0.5)
+        self.assertEqual(records[0].metadata["reward_mode"], "fractional_pass_rate")
+
     def test_rollout_jsonl_round_trip(self) -> None:
         records = generate_rollouts(
             [_task()],
@@ -125,6 +159,116 @@ class AgentRolloutTests(unittest.TestCase):
 
         self.assertEqual(len(records), 2)
         self.assertIn("mean_reward", completed.stdout)
+
+    def test_run_rollouts_script_reads_config_and_reward_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            task_path = tmp_path / "tasks.jsonl"
+            output_path = tmp_path / "rollouts.jsonl"
+            completion_path = tmp_path / "completion.txt"
+            config_path = tmp_path / "rollout.json"
+            task = TaskSpec(
+                task_id="agent/config-fractional",
+                source="unit-test",
+                prompt="Write add_one(x).",
+                split=Split.TRAIN,
+                entry_point="add_one",
+                public_tests=(
+                    TestSpec(name="public-pass", code="assert add_one(1) == 2"),
+                    TestSpec(name="public-fail", code="assert add_one(2) == 4"),
+                ),
+                hidden_tests=(),
+            )
+            TaskRegistry([task]).to_jsonl(task_path)
+            completion_path.write_text(
+                "```python\ndef add_one(x):\n    return x + 1\n```",
+                encoding="utf-8",
+            )
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "experiment": {"seed": 7},
+                        "data": {"tasks": str(task_path), "split": "train"},
+                        "prompt": {"template": "direct_solution_v1"},
+                        "generation": {
+                            "backend": "static",
+                            "static_completion_file": str(completion_path),
+                            "samples_per_task": 1,
+                        },
+                        "execution": {"include_hidden": True},
+                        "reward": {"mode": "fractional_pass_rate"},
+                        "output": {"rollouts": str(output_path)},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "run_rollouts.py"),
+                    "--config",
+                    str(config_path),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            records = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(records[0]["reward"]["reward_name"], "reward_fractional_pass_rate")
+        self.assertEqual(records[0]["reward"]["reward"], 0.5)
+        self.assertEqual(records[0]["metadata"]["reward_mode"], "fractional_pass_rate")
+
+    def test_run_rollouts_script_fails_on_dataset_quality_issue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            task_path = tmp_path / "tasks.jsonl"
+            output_path = tmp_path / "rollouts.jsonl"
+            TaskRegistry(
+                [
+                    TaskSpec(
+                        task_id="agent/train-duplicate",
+                        source="unit-test",
+                        prompt="Return x plus one.",
+                        split=Split.TRAIN,
+                        entry_point="add_one",
+                        public_tests=(TestSpec(name="public", code="assert add_one(1) == 2"),),
+                    ),
+                    TaskSpec(
+                        task_id="agent/dev-duplicate",
+                        source="unit-test",
+                        prompt="Return x plus one.",
+                        split=Split.DEV,
+                        entry_point="add_one",
+                        public_tests=(TestSpec(name="public", code="assert add_one(1) == 2"),),
+                    ),
+                ]
+            ).to_jsonl(task_path)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "run_rollouts.py"),
+                    "--tasks",
+                    str(task_path),
+                    "--output",
+                    str(output_path),
+                    "--backend",
+                    "mock",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("dataset quality checks failed", completed.stdout)
+        self.assertIn("contamination", completed.stdout)
 
 
 if __name__ == "__main__":

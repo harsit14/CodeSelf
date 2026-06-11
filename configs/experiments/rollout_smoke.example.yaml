@@ -6,6 +6,8 @@ data:
   tasks: configs/datasets/tasks.example.jsonl
   split: train
   limit: 10
+  skip_quality_checks: false
+  near_duplicate_threshold: 0.92
 
 prompt:
   template: direct_solution_v1
@@ -19,6 +21,9 @@ generation:
 
 execution:
   include_hidden: true
+
+reward:
+  mode: correctness_v0
 
 output:
   rollouts: outputs/rollouts/rollout_smoke.jsonl
