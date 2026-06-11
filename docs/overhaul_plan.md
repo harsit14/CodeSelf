@@ -176,16 +176,43 @@ Remaining risks:
 
 ## Phase 4: Common RL Training Core
 
-Status: pending
+Status: started
 
 Goals:
 
 - Add model/tokenizer loading with Transformers and PEFT/LoRA.
 - Add response masks, prompt masks, token logprobs, old logprobs, reference
-  logprobs, entropy, response lengths, and KL metrics.
+  logprobs, entropy, response lengths, and KL metrics. Started.
 - Keep trainer backends pluggable so `from_scratch`, TRL, or verl can be chosen
-  by config.
+  by config. Started.
 - Keep `--smoke` as a fast dependency-free CI path.
+
+First slice shipped:
+
+- Added dependency-free `codeself.training.common` contracts for future real
+  training backends.
+- Added backend registry/availability checks for `smoke`, `from_scratch`, TRL,
+  and verl.
+- Added model runtime, optimizer, rollout runtime, and top-level training-core
+  config records.
+- Added prompt/response/attention mask helpers that explicitly separate prompt
+  tokens from response tokens for loss computation.
+- Added token logprob records and response-only summaries for policy logprobs,
+  old-policy logprobs, reference logprobs, KL, importance ratios, and entropy.
+- Added sequence/batch records for tokenized policy-gradient samples.
+- Added `scripts/inspect_training_core.py` to inspect a config and backend
+  availability without importing heavyweight training libraries.
+- Added `configs/experiments/training_core_debug.example.json` as the first
+  real-training-core config example.
+
+Remaining risks:
+
+- No Transformers, PEFT, or Torch model loading is implemented yet.
+- No rollout tensorization from actual tokenizer output is implemented yet.
+- No GRPO/PPO loss is implemented yet; the current work defines the data and
+  masking contracts those losses should consume.
+- Backend availability checks report optional dependency presence, but do not
+  validate CUDA/MPS memory, model licenses, or checkpoint writeability.
 
 ## Phase 5: Real GRPO
 

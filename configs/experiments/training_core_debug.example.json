@@ -1,0 +1,37 @@
+{
+  "experiment": {
+    "name": "training_core_debug_example",
+    "seed": 20260601
+  },
+  "model": {
+    "name": "Qwen/Qwen2.5-Coder-0.5B",
+    "tokenizer": "Qwen/Qwen2.5-Coder-0.5B",
+    "revision": "pin-before-training",
+    "dtype": "bf16",
+    "device": "auto",
+    "gradient_checkpointing": true,
+    "use_lora": true,
+    "lora_rank": 16,
+    "full_finetune": false
+  },
+  "rollout": {
+    "group_size": 4,
+    "samples_per_task": 4,
+    "max_prompt_tokens": 1024,
+    "max_response_tokens": 256,
+    "temperature": 0.8,
+    "top_p": 0.95
+  },
+  "training": {
+    "algorithm": "grpo",
+    "backend": "smoke",
+    "max_steps": 10,
+    "learning_rate": 0.000001,
+    "weight_decay": 0.0,
+    "warmup_steps": 0,
+    "gradient_accumulation_steps": 1,
+    "max_grad_norm": 1.0,
+    "kl_beta": 0.05,
+    "clip_epsilon": 0.2
+  }
+}
