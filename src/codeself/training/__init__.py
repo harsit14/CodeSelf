@@ -139,6 +139,12 @@ from codeself.training.ppo_loss import (
     compute_ppo_loss,
     prepare_ppo_value_targets,
 )
+from codeself.training.ppo_model import (
+    PaddedPPOTrainingTensors,
+    build_ppo_tensor_batch_from_model,
+    gather_causal_lm_token_entropy,
+    pad_ppo_training_batch_tensors,
+)
 from codeself.training.ppo_torch import (
     PPOTensorBatch,
     PPOTensorLossResult,
@@ -206,6 +212,7 @@ __all__ = [
     "PPOValueTargetResult",
     "PPOOptimizerStepConfig",
     "PPOOptimizerStepResult",
+    "PaddedPPOTrainingTensors",
     "PaddedTrainingTensors",
     "RolloutRuntimeConfig",
     "SequenceTrainingSample",
@@ -233,6 +240,7 @@ __all__ = [
     "build_grpo_tensor_batch",
     "build_grpo_training_batch_from_rollouts",
     "build_ppo_tensor_batch",
+    "build_ppo_tensor_batch_from_model",
     "build_prompt_response_mask",
     "build_grpo_experiment_matrix",
     "build_training_core_config",
@@ -245,11 +253,13 @@ __all__ = [
     "encode_prompt_response",
     "encode_text",
     "gather_causal_lm_token_logprobs",
+    "gather_causal_lm_token_entropy",
     "get_backend_spec",
     "list_backend_specs",
     "mask_mean",
     "mask_sum",
     "pad_training_batch_tensors",
+    "pad_ppo_training_batch_tensors",
     "prepare_ppo_value_targets",
     "read_last_metric",
     "require_torch",

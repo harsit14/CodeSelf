@@ -480,11 +480,30 @@ Third slice shipped:
 - Added active Torch tests for config validation, missing-Torch behavior, real
   policy/value parameter updates, and accumulation without optimizer stepping.
 
+Fourth slice shipped:
+
+- Added model-facing PPO tensor batch helpers for Torch causal-LM modules with
+  value heads.
+- Added `PaddedPPOTrainingTensors` and `pad_ppo_training_batch_tensors()` to
+  pad PPO samples without requiring GRPO-style group advantages.
+- Added `gather_causal_lm_token_entropy()` to compute next-token categorical
+  entropy aligned to response-token positions.
+- Added `build_ppo_tensor_batch_from_model()` to run policy, optional value,
+  old-policy, old-value, and reference forward passes into a differentiable
+  `PPOTensorBatch`.
+- The PPO model bridge keeps old policy logprobs, old values, and reference
+  logprobs detached while leaving policy logprobs, entropy, and current value
+  predictions differentiable.
+- Added active Torch tests for entropy alignment, recorded rollout logprobs,
+  value-head gradients, optimizer updates, detached old/reference models,
+  explicit rollout-time value estimates, and missing value-head failures.
+
 Remaining risks:
 
-- PPO now has dependency-free and Torch objective implementations plus an
-  optimizer step; it still needs value-head model wiring and online trainer
-  parity with the completed GRPO path.
+- PPO now has dependency-free and Torch objective implementations, an optimizer
+  step, and model/value-head tensor wiring; it still needs a training loop,
+  model-aware trainer, rollout cycle, and online trainer parity with the
+  completed GRPO path.
 - Rollout budget and dev-evaluation parity with GRPO should be enforced once the
   PPO online trainer exists.
 
