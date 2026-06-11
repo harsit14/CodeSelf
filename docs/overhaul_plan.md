@@ -241,7 +241,7 @@ Goals:
 - Implement group sampling per prompt.
 - Normalize group-relative advantages. Started.
 - Use clipped policy-gradient loss over response tokens only. Started.
-- Penalize or constrain KL against a frozen reference model.
+- Penalize or constrain KL against a frozen reference model. Started.
 - Periodically evaluate on a dev slice.
 - Write checkpoints, metrics, rollouts, and reproducibility metadata.
 
@@ -259,13 +259,29 @@ First slice shipped:
 - Kept the implementation in plain Python floats so the objective can be tested
   before moving it into Torch tensors.
 
+Second slice shipped:
+
+- Added an optional Torch implementation of the GRPO objective behind a lazy
+  import boundary.
+- Added `GRPOTensorBatch` and `GRPOTensorLossResult` records for differentiable
+  loss computation and detached diagnostics.
+- Added `build_grpo_tensor_batch()` to convert `TrainingBatch` records into
+  padded policy, old-policy, reference, response-mask, and advantage tensors.
+- Added `compute_grpo_tensor_loss()` with the same response-token mask,
+  clipping, reference-KL, and per-sequence reduction semantics as the
+  dependency-free reference implementation.
+- Added import-safe optional-dependency helpers so the smoke test path still
+  runs without Torch installed.
+- Added tests that verify missing-Torch behavior now and numerical parity with
+  the reference implementation when Torch is installed.
+
 Remaining risks:
 
-- This is not yet a tensorized training step and does not update weights.
+- This is not yet a full training step and does not update weights.
 - Old-policy and reference logprobs still need to be produced by real model
   engines during rollout collection.
-- The loss helper uses scalar diagnostics only; the eventual trainer needs
-  backpropagating Torch tensors with the same masking behavior.
+- The tensor loss is ready for backpropagation, but no optimizer, scheduler,
+  gradient accumulation, checkpointing, or LoRA attachment is wired yet.
 - Group sampling is still represented by batch grouping rather than a full
   generate -> execute -> score -> optimize loop.
 
