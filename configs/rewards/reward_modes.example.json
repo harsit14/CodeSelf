@@ -1,0 +1,25 @@
+{
+  "reward_modes": [
+    {
+      "mode": "binary_all_tests_pass",
+      "name": "reward_binary_all_tests_pass",
+      "description": "Sparse correctness reward: 1 only when the final task result passes."
+    },
+    {
+      "mode": "fractional_pass_rate",
+      "name": "reward_fractional_pass_rate",
+      "description": "Scores the fraction of non-skipped public and hidden tests that pass."
+    },
+    {
+      "mode": "partial_credit",
+      "name": "reward_partial_credit_v1",
+      "description": "Syntax/import/test partial credit with configurable penalties and shaping.",
+      "syntax_weight": 0.1,
+      "import_weight": 0.1,
+      "public_weight": 0.4,
+      "hidden_weight": 0.4,
+      "compile_success_bonus": 0.0,
+      "length_penalty_per_1k_chars": 0.0
+    }
+  ]
+}

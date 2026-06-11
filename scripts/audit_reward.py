@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.datasets import TaskRegistry  # noqa: E402
 from codeself.execution import SandboxedTestRunner  # noqa: E402
-from codeself.rewards import CompositeRewardScorer  # noqa: E402
+from codeself.rewards import CompositeRewardScorer, ConfigurableRewardScorer, RewardModeConfig  # noqa: E402
 
 
 def main() -> int:
@@ -22,6 +22,14 @@ def main() -> int:
     parser.add_argument("--task-id", help="Task ID to score. Defaults to the first task.")
     parser.add_argument("--solution-file", type=Path, required=True, help="Python solution file.")
     parser.add_argument("--public-only", action="store_true", help="Do not run hidden tests.")
+    parser.add_argument(
+        "--reward-mode",
+        choices=("correctness_v0", "binary_all_tests_pass", "fractional_pass_rate", "partial_credit"),
+        default="correctness_v0",
+        help="Reward mode to audit.",
+    )
+    parser.add_argument("--compile-success-bonus", type=float, default=0.0)
+    parser.add_argument("--length-penalty-per-1k-chars", type=float, default=0.0)
     args = parser.parse_args()
 
     registry = TaskRegistry.from_jsonl(args.tasks)
@@ -29,7 +37,17 @@ def main() -> int:
     solution_code = args.solution_file.read_text(encoding="utf-8")
 
     result = SandboxedTestRunner().run(task, solution_code, include_hidden=not args.public_only)
-    reward = CompositeRewardScorer().score(result, solution_code=solution_code)
+    if args.reward_mode == "correctness_v0":
+        reward = CompositeRewardScorer().score(result, solution_code=solution_code)
+    else:
+        reward = ConfigurableRewardScorer(
+            RewardModeConfig(
+                mode=args.reward_mode,
+                name=f"reward_{args.reward_mode}",
+                compile_success_bonus=args.compile_success_bonus,
+                length_penalty_per_1k_chars=args.length_penalty_per_1k_chars,
+            )
+        ).score(result, solution_code=solution_code)
     print(json.dumps(reward.to_dict(), indent=2, sort_keys=True))
     return 0
 

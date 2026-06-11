@@ -11,6 +11,12 @@ from codeself.rewards.correctness import (
     score_correctness,
 )
 from codeself.rewards.efficiency import EfficiencyMetrics, measure_efficiency
+from codeself.rewards.modes import (
+    ConfigurableRewardScorer,
+    RewardModeConfig,
+    RewardScorer,
+    make_reward_scorer,
+)
 from codeself.rewards.quality import QualityMetrics, measure_quality
 
 __all__ = [
@@ -21,8 +27,12 @@ __all__ = [
     "RewardBreakdown",
     "RewardComponent",
     "RewardConfig",
+    "RewardModeConfig",
     "RewardPenalties",
+    "RewardScorer",
     "RewardWeights",
+    "ConfigurableRewardScorer",
+    "make_reward_scorer",
     "measure_efficiency",
     "measure_quality",
     "score_correctness",

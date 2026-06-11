@@ -187,6 +187,9 @@ def _normalize_components(
 def _phase_fraction(phase) -> float:
     if phase is None or phase.status == PhaseStatus.SKIPPED:
         return 0.0
+    outcomes = [outcome for outcome in phase.test_outcomes if outcome.status != PhaseStatus.SKIPPED]
+    if outcomes:
+        return sum(1 for outcome in outcomes if outcome.passed) / len(outcomes)
     return 1.0 if phase.passed else 0.0
 
 

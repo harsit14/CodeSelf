@@ -12,7 +12,13 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.datasets import ResourceLimits, Split, TaskRegistry, TaskSpec, TestSpec  # noqa: E402
 from codeself.execution import SandboxedTestRunner  # noqa: E402
-from codeself.rewards import CompositeRewardScorer, measure_quality, score_correctness  # noqa: E402
+from codeself.rewards import (  # noqa: E402
+    CompositeRewardScorer,
+    ConfigurableRewardScorer,
+    RewardModeConfig,
+    measure_quality,
+    score_correctness,
+)
 
 
 def _task() -> TaskSpec:
@@ -48,6 +54,28 @@ class RewardTests(unittest.TestCase):
         self.assertLess(breakdown.reward, 1.0)
         self.assertEqual(breakdown.total_penalty, 0.0)
 
+    def test_correctness_uses_per_test_fraction_when_available(self) -> None:
+        task = TaskSpec(
+            task_id="reward/multi-test",
+            source="unit-test",
+            prompt="Write add_one(x).",
+            split=Split.DEV,
+            entry_point="add_one",
+            public_tests=(
+                TestSpec(name="public-pass", code="assert add_one(1) == 2"),
+                TestSpec(name="public-fail", code="assert add_one(2) == 4"),
+            ),
+            hidden_tests=(),
+            resource_limits=ResourceLimits(timeout_seconds=1.0, memory_mb=256),
+        )
+        result = SandboxedTestRunner().run(task, "def add_one(x):\n    return x + 1")
+        breakdown = score_correctness(result)
+        public = next(
+            component for component in breakdown.components if component.name == "public_test_fraction"
+        )
+
+        self.assertEqual(public.value, 0.5)
+
     def test_timeout_applies_penalty(self) -> None:
         task = TaskSpec(
             task_id="reward/spin",
@@ -63,6 +91,52 @@ class RewardTests(unittest.TestCase):
 
         self.assertLess(breakdown.reward, 0.0)
         self.assertIn("timeout", [penalty.name for penalty in breakdown.penalties])
+
+    def test_binary_reward_mode_requires_full_pass(self) -> None:
+        passed = SandboxedTestRunner().run(_task(), "def add_one(x):\n    return x + 1")
+        failed = SandboxedTestRunner().run(_task(), "def add_one(x):\n    return x")
+        scorer = ConfigurableRewardScorer(
+            RewardModeConfig(mode="binary_all_tests_pass", name="binary")
+        )
+
+        self.assertEqual(scorer.score(passed).reward, 1.0)
+        self.assertEqual(scorer.score(failed).reward, 0.0)
+
+    def test_fractional_reward_mode_uses_per_test_outcomes(self) -> None:
+        task = TaskSpec(
+            task_id="reward/fractional",
+            source="unit-test",
+            prompt="Write add_one(x).",
+            split=Split.DEV,
+            entry_point="add_one",
+            public_tests=(
+                TestSpec(name="public-pass", code="assert add_one(1) == 2"),
+                TestSpec(name="public-fail", code="assert add_one(2) == 4"),
+            ),
+            hidden_tests=(),
+        )
+        result = SandboxedTestRunner().run(task, "def add_one(x):\n    return x + 1")
+        breakdown = ConfigurableRewardScorer(
+            RewardModeConfig(mode="fractional_pass_rate", name="fractional")
+        ).score(result)
+
+        self.assertEqual(breakdown.reward, 0.5)
+        self.assertEqual(breakdown.metrics["test_pass_fraction"], 0.5)
+
+    def test_partial_credit_reward_logs_shaping_and_degenerate_metrics(self) -> None:
+        result = SandboxedTestRunner().run(_task(), "def add_one(x):\n    return x")
+        breakdown = ConfigurableRewardScorer(
+            RewardModeConfig(
+                mode="partial_credit",
+                name="partial",
+                compile_success_bonus=0.05,
+                length_penalty_per_1k_chars=0.01,
+            )
+        ).score(result, solution_code="x = 1\nx = 1\n")
+
+        self.assertIn("compile_success_bonus", [component.name for component in breakdown.components])
+        self.assertIn("length_penalty", [component.name for component in breakdown.components])
+        self.assertGreater(breakdown.metrics["repeated_line_fraction"], 0.0)
 
     def test_composite_reward_attaches_quality_and_efficiency_metrics(self) -> None:
         code = "def add_one(x):\n    return x + 1"
@@ -109,6 +183,47 @@ class RewardTests(unittest.TestCase):
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["reward_name"], "reward_v0_correctness")
         self.assertEqual(payload["reward"], 1.0)
+
+    def test_audit_reward_script_can_use_pluggable_reward_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            task_path = Path(tmpdir) / "tasks.jsonl"
+            solution_path = Path(tmpdir) / "solution.py"
+            task = TaskSpec(
+                task_id="reward/audit-fractional",
+                source="unit-test",
+                prompt="Write add_one(x).",
+                split=Split.DEV,
+                entry_point="add_one",
+                public_tests=(
+                    TestSpec(name="public-pass", code="assert add_one(1) == 2"),
+                    TestSpec(name="public-fail", code="assert add_one(2) == 4"),
+                ),
+                hidden_tests=(),
+            )
+            TaskRegistry([task]).to_jsonl(task_path)
+            solution_path.write_text("def add_one(x):\n    return x + 1\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "audit_reward.py"),
+                    "--tasks",
+                    str(task_path),
+                    "--solution-file",
+                    str(solution_path),
+                    "--reward-mode",
+                    "fractional_pass_rate",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["reward_name"], "reward_fractional_pass_rate")
+        self.assertEqual(payload["reward"], 0.5)
 
 
 if __name__ == "__main__":

@@ -104,16 +104,45 @@ Remaining risks:
 
 ## Phase 3: Data And Reward Pipeline
 
-Status: pending
+Status: started
 
 Goals:
 
 - Add versioned dataset config loading.
 - Generalize custom JSONL ingestion and hidden/visible test auto-splitting.
-- Add exact and near-duplicate contamination checks.
+- Add exact and near-duplicate contamination checks. Started.
 - Introduce a reward plugin interface with binary, fractional, and partial
-  credit rewards.
-- Log shaping terms and reward-hacking flags separately.
+  credit rewards. Done in the first Phase 3 slice.
+- Log shaping terms and reward-hacking flags separately. Started.
+
+First slice shipped:
+
+- Added dataset quality reporting for hidden-test leakage and train/eval
+  contamination.
+- Hidden-test leakage now checks prompt, starter code, and public tests.
+- Train/eval contamination now detects exact duplicates and normalized
+  near-duplicates across split boundaries.
+- `scripts/validate_task_schema.py` now reports hidden leaks and contamination
+  findings and exits nonzero when either is present.
+- Added `ConfigurableRewardScorer` with `binary_all_tests_pass`,
+  `fractional_pass_rate`, and `partial_credit` modes.
+- Existing `reward_v0_correctness` now uses per-test outcomes when available,
+  instead of reducing an entire test phase to one binary value.
+- `scripts/audit_reward.py` can audit the new reward modes while retaining
+  `correctness_v0` as the default.
+- Added `configs/rewards/reward_modes.example.json` to document the first
+  pluggable reward choices.
+
+Remaining risks:
+
+- Near-duplicate detection is a simple normalized string similarity check; it
+  should be complemented with code-aware or embedding-based review before final
+  claims.
+- Reward-hacking detection is still shallow. The new reward metrics flag empty
+  code and repeated lines, but hardcoded visible-test outputs need task-aware
+  analysis.
+- Rollout generation still uses the legacy composite reward by default; config
+  selection of reward modes should be wired into experiment configs next.
 
 ## Phase 4: Common RL Training Core
 
