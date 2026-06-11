@@ -42,20 +42,46 @@ Verification:
 
 ## Phase 2: Sandbox Hardening
 
-Status: pending
+Status: started
 
 Goals:
 
-- Add process-group cleanup and robust timeout handling.
-- Run each test with structured per-test outcomes.
-- Add worker-pool batch execution.
+- Add process-group cleanup and robust timeout handling. Started.
+- Run each test with structured per-test outcomes. Done in the first sandbox
+  slice.
+- Add worker-pool batch execution. Done in the first sandbox slice.
 - Strengthen resource limits for CPU, memory, files, and subprocesses where the
-  host OS permits.
+  host OS permits. Started with open-file, file-size, core-file, CPU, memory,
+  and process rlimits where available.
 - Keep final evaluation container-ready with `--network none`, read-only
   mounts, pids limit, memory limit, and non-root execution.
 - Add adversarial tests for infinite loops, fork attempts, memory pressure,
   filesystem access, network attempts, `sys.exit`/`os._exit`, and harness
   introspection.
+
+First slice shipped:
+
+- `PhaseResult` now carries `test_outcomes` for per-test pass/fail/timeout
+  reporting.
+- Public and hidden test phases execute each test snippet in its own subprocess
+  phase, then aggregate the phase status for backward compatibility.
+- Hidden tests skipped after public failure now include skipped per-test
+  outcomes.
+- `SandboxedTestRunner.run_many()` runs many candidate programs concurrently
+  with a bounded worker pool and returns results in input order.
+- Subprocess timeouts now terminate the spawned process group on POSIX hosts.
+
+Remaining risks:
+
+- The local subprocess path is still not a full jail. Final evaluation needs the
+  container path to become executable, not just a command builder.
+- Static scanning remains bypassable by sufficiently adversarial Python object
+  tricks.
+- The test harness still materializes executable test code in the temporary
+  run directory; future work should reduce harness introspection and leakage
+  surfaces.
+- macOS does not provide the same memory-enforcement behavior as Linux
+  `RLIMIT_AS`, so memory-abuse tests need host-aware expectations.
 
 ## Phase 3: Data And Reward Pipeline
 

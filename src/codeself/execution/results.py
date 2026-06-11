@@ -38,6 +38,32 @@ class SecurityFinding:
 
 
 @dataclass(frozen=True)
+class TestOutcome:
+    """Result for one individual test snippet."""
+
+    name: str
+    status: PhaseStatus
+    duration_seconds: float = 0.0
+    stdout: str = ""
+    stderr: str = ""
+    error: str = ""
+
+    @property
+    def passed(self) -> bool:
+        return self.status == PhaseStatus.PASSED
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "status": self.status.value,
+            "duration_seconds": self.duration_seconds,
+            "stdout": self.stdout,
+            "stderr": self.stderr,
+            "error": self.error,
+        }
+
+
+@dataclass(frozen=True)
 class PhaseResult:
     """Result from one phase, such as syntax, import, public tests, or hidden tests."""
 
@@ -49,6 +75,7 @@ class PhaseResult:
     stderr: str = ""
     error: str = ""
     tests_run: int = 0
+    test_outcomes: tuple[TestOutcome, ...] = field(default_factory=tuple)
 
     @property
     def passed(self) -> bool:
@@ -64,6 +91,7 @@ class PhaseResult:
             "stderr": self.stderr,
             "error": self.error,
             "tests_run": self.tests_run,
+            "test_outcomes": [outcome.to_dict() for outcome in self.test_outcomes],
         }
 
 

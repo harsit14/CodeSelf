@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.datasets import ResourceLimits, Split, TaskSpec, TestSpec
-from codeself.execution import DockerSandboxRunner, PhaseStatus, SandboxedTestRunner
+from codeself.execution import DockerSandboxRunner, ExecutionJob, PhaseStatus, SandboxedTestRunner
 
 
 def _task(
@@ -69,6 +69,51 @@ class SandboxedTestRunnerTests(unittest.TestCase):
 
         self.assertFalse(result.passed)
         self.assertEqual(result.phase("public_tests").status, PhaseStatus.TIMEOUT)
+
+    def test_test_phases_report_per_test_outcomes(self) -> None:
+        task = TaskSpec(
+            task_id="execution/multiple-tests",
+            source="unit-test",
+            prompt="Write add_one(x).",
+            split=Split.DEV,
+            entry_point="add_one",
+            public_tests=(
+                TestSpec(name="public-pass", code="assert add_one(1) == 2"),
+                TestSpec(name="public-fail", code="assert add_one(2) == 4"),
+            ),
+            hidden_tests=(TestSpec(name="hidden", code="assert add_one(0) == 1"),),
+            resource_limits=ResourceLimits(timeout_seconds=1.0, memory_mb=256),
+        )
+        result = SandboxedTestRunner().run(task, "def add_one(x):\n    return x + 1")
+        public_phase = result.phase("public_tests")
+        hidden_phase = result.phase("hidden_tests")
+
+        self.assertFalse(result.passed)
+        self.assertEqual(public_phase.status, PhaseStatus.FAILED)
+        self.assertEqual(public_phase.tests_run, 2)
+        self.assertEqual(
+            [outcome.status for outcome in public_phase.test_outcomes],
+            [PhaseStatus.PASSED, PhaseStatus.FAILED],
+        )
+        self.assertEqual(hidden_phase.status, PhaseStatus.SKIPPED)
+        self.assertEqual(hidden_phase.test_outcomes[0].status, PhaseStatus.SKIPPED)
+
+    def test_run_many_returns_results_in_input_order(self) -> None:
+        first = _task(public_code="assert add_one(1) == 2")
+        second = _task(public_code="assert add_one(1) == 3")
+        runner = SandboxedTestRunner()
+
+        results = runner.run_many(
+            (
+                ExecutionJob(first, "def add_one(x):\n    return x + 1", metadata={"name": "first"}),
+                ExecutionJob(second, "def add_one(x):\n    return x + 1", metadata={"name": "second"}),
+            ),
+            max_workers=2,
+        )
+
+        self.assertEqual([item.metadata["name"] for item in results], ["first", "second"])
+        self.assertTrue(results[0].result.passed)
+        self.assertFalse(results[1].result.passed)
 
 
 class DockerSandboxRunnerTests(unittest.TestCase):

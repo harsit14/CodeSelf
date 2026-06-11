@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import platform
 import subprocess
 import sys
@@ -46,38 +47,41 @@ class SubprocessSandboxRunner:
             (temp_path / "run_phase.py").write_text(_runner_code(phase_code), encoding="utf-8")
 
             start = time.monotonic()
+            process = subprocess.Popen(
+                [self.config.python_executable, "run_phase.py"],
+                cwd=temp_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=_clean_environment(temp_path),
+                preexec_fn=_resource_limiter(limits),
+                start_new_session=platform.system() != "Windows",
+            )
             try:
-                completed = subprocess.run(
-                    [self.config.python_executable, "run_phase.py"],
-                    cwd=temp_path,
-                    capture_output=True,
-                    text=True,
-                    timeout=limits.timeout_seconds,
-                    env=_clean_environment(temp_path),
-                    preexec_fn=_resource_limiter(limits),
-                    check=False,
-                )
-            except subprocess.TimeoutExpired as exc:
+                stdout, stderr = process.communicate(timeout=limits.timeout_seconds)
+            except subprocess.TimeoutExpired:
+                _terminate_process_tree(process)
+                stdout, stderr = process.communicate()
                 duration = time.monotonic() - start
                 return PhaseResult(
                     name=phase_name,
                     status=PhaseStatus.TIMEOUT,
                     duration_seconds=duration,
-                    stdout=_truncate(exc.stdout or "", self.config.max_output_chars),
-                    stderr=_truncate(exc.stderr or "", self.config.max_output_chars),
+                    stdout=_truncate(stdout or "", self.config.max_output_chars),
+                    stderr=_truncate(stderr or "", self.config.max_output_chars),
                     error=f"timed out after {limits.timeout_seconds:.3f}s",
                     tests_run=tests_run,
                 )
 
             duration = time.monotonic() - start
-            stdout = _truncate(completed.stdout, self.config.max_output_chars)
-            stderr = _truncate(completed.stderr, self.config.max_output_chars)
-            status = PhaseStatus.PASSED if completed.returncode == 0 else PhaseStatus.FAILED
+            stdout = _truncate(stdout, self.config.max_output_chars)
+            stderr = _truncate(stderr, self.config.max_output_chars)
+            status = PhaseStatus.PASSED if process.returncode == 0 else PhaseStatus.FAILED
             return PhaseResult(
                 name=phase_name,
                 status=status,
                 duration_seconds=duration,
-                exit_code=completed.returncode,
+                exit_code=process.returncode,
                 stdout=stdout,
                 stderr=stderr,
                 error="" if status == PhaseStatus.PASSED else _last_line(stderr),
@@ -131,7 +135,42 @@ def _resource_limiter(limits: ResourceLimits):
             except (ValueError, OSError):
                 pass
 
+        if hasattr(resource, "RLIMIT_NOFILE"):
+            try:
+                resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+            except (ValueError, OSError):
+                pass
+
+        if hasattr(resource, "RLIMIT_FSIZE"):
+            try:
+                resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024))
+            except (ValueError, OSError):
+                pass
+
+        if hasattr(resource, "RLIMIT_CORE"):
+            try:
+                resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+            except (ValueError, OSError):
+                pass
+
     return limit_resources
+
+
+def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    if platform.system() != "Windows":
+        try:
+            os.killpg(process.pid, 9)
+            return
+        except ProcessLookupError:
+            return
+        except OSError:
+            pass
+    try:
+        process.kill()
+    except OSError:
+        pass
 
 
 def _sitecustomize_code() -> str:
