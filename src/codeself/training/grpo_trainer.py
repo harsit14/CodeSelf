@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,24 @@ class GRPOModelTrainingConfig:
 
 
 @dataclass(frozen=True)
+class GRPOCheckpointArtifact:
+    """One state artifact written by a model-training checkpoint."""
+
+    kind: str
+    path: str
+    bytes: int
+    sha256: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "kind": self.kind,
+            "path": self.path,
+            "bytes": self.bytes,
+            "sha256": self.sha256,
+        }
+
+
+@dataclass(frozen=True)
 class GRPOModelTrainingResult:
     """Result and checkpoint metadata for a minimal GRPO model run."""
 
@@ -68,6 +87,7 @@ class GRPOModelTrainingResult:
     optimizer_class: str
     old_policy_model_class: str | None = None
     reference_model_class: str | None = None
+    checkpoint_artifacts: tuple[GRPOCheckpointArtifact, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -77,12 +97,16 @@ class GRPOModelTrainingResult:
             "optimizer_class": self.optimizer_class,
             "old_policy_model_class": self.old_policy_model_class,
             "reference_model_class": self.reference_model_class,
+            "checkpoint_artifacts": [
+                artifact.to_dict() for artifact in self.checkpoint_artifacts
+            ],
         }
 
     def checkpoint_payload(self) -> dict[str, object]:
         return {
             "kind": "grpo_model_training_checkpoint",
             "has_real_model_weights": True,
+            "has_state_artifacts": bool(self.checkpoint_artifacts),
             "config": self.config.to_dict(),
             "model": {
                 "policy_class": self.policy_model_class,
@@ -90,10 +114,11 @@ class GRPOModelTrainingResult:
                 "reference_class": self.reference_model_class,
             },
             "optimizer_class": self.optimizer_class,
+            "artifacts": [artifact.to_dict() for artifact in self.checkpoint_artifacts],
             "loop": self.loop.to_dict(),
             "notes": (
-                "Minimal GRPO model-training manifest. Model weights are owned "
-                "by the caller; this manifest records training-loop metadata."
+                "Minimal GRPO model-training manifest. When state artifacts are "
+                "present, their SHA-256 checksums are recorded here."
             ),
         }
 
@@ -109,6 +134,7 @@ def run_grpo_model_training(
     config: GRPOModelTrainingConfig | None = None,
     metrics_path: str | Path | None = None,
     checkpoint_path: str | Path | None = None,
+    state_dir: str | Path | None = None,
 ) -> GRPOModelTrainingResult:
     """Run the minimal model-aware GRPO training loop."""
 
@@ -141,6 +167,17 @@ def run_grpo_model_training(
         scheduler=scheduler,
         config=train_config.loop_config(),
     )
+    checkpoint_artifacts = (
+        _write_state_checkpoint(
+            torch,
+            state_dir,
+            policy_model=policy_model,
+            optimizer=active_optimizer,
+            scheduler=scheduler,
+        )
+        if state_dir is not None
+        else ()
+    )
     result = GRPOModelTrainingResult(
         config=train_config,
         loop=loop_result,
@@ -148,6 +185,7 @@ def run_grpo_model_training(
         old_policy_model_class=old_policy_model.__class__.__name__ if old_policy_model else None,
         reference_model_class=reference_model.__class__.__name__ if reference_model else None,
         optimizer_class=active_optimizer.__class__.__name__,
+        checkpoint_artifacts=checkpoint_artifacts,
     )
     if metrics_path is not None:
         _write_metrics(metrics_path, result)
@@ -165,6 +203,54 @@ def _build_optimizer(torch: Any, policy_model: Any, config: OptimizerConfig) -> 
         lr=config.learning_rate,
         weight_decay=config.weight_decay,
     )
+
+
+def _write_state_checkpoint(
+    torch: Any,
+    state_dir: str | Path,
+    *,
+    policy_model: Any,
+    optimizer: Any,
+    scheduler: Any | None,
+) -> tuple[GRPOCheckpointArtifact, ...]:
+    output_dir = Path(state_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    artifacts: list[GRPOCheckpointArtifact] = []
+
+    if not hasattr(policy_model, "state_dict"):
+        raise TypeError("policy_model must define state_dict() to write state checkpoints")
+    policy_path = output_dir / "policy_model.pt"
+    torch.save(policy_model.state_dict(), policy_path)
+    artifacts.append(_checkpoint_artifact("policy_model_state", policy_path))
+
+    if hasattr(optimizer, "state_dict"):
+        optimizer_path = output_dir / "optimizer.pt"
+        torch.save(optimizer.state_dict(), optimizer_path)
+        artifacts.append(_checkpoint_artifact("optimizer_state", optimizer_path))
+
+    if scheduler is not None and hasattr(scheduler, "state_dict"):
+        scheduler_path = output_dir / "scheduler.pt"
+        torch.save(scheduler.state_dict(), scheduler_path)
+        artifacts.append(_checkpoint_artifact("scheduler_state", scheduler_path))
+
+    return tuple(artifacts)
+
+
+def _checkpoint_artifact(kind: str, path: Path) -> GRPOCheckpointArtifact:
+    return GRPOCheckpointArtifact(
+        kind=kind,
+        path=str(path),
+        bytes=path.stat().st_size,
+        sha256=_sha256_file(path),
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _trainable_parameters(model: Any) -> list[Any]:

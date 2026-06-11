@@ -39,6 +39,7 @@ class GRPOModelTrainerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             metrics_path = Path(tmpdir) / "metrics.jsonl"
             checkpoint_path = Path(tmpdir) / "checkpoint_manifest.json"
+            state_dir = Path(tmpdir) / "state"
             result = run_grpo_model_training(
                 batches,
                 policy_model=policy_model,
@@ -52,12 +53,18 @@ class GRPOModelTrainerTests(unittest.TestCase):
                 ),
                 metrics_path=metrics_path,
                 checkpoint_path=checkpoint_path,
+                state_dir=state_dir,
             )
             metrics_lines = [
                 json.loads(line)
                 for line in metrics_path.read_text(encoding="utf-8").splitlines()
             ]
             checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+            artifacts = {artifact["kind"]: artifact for artifact in checkpoint["artifacts"]}
+            loaded_policy_state = torch.load(
+                artifacts["policy_model_state"]["path"],
+                weights_only=True,
+            )
 
         self.assertEqual(result.loop.microbatch_count, 2)
         self.assertEqual(result.loop.optimizer_step_count, 1)
@@ -69,6 +76,11 @@ class GRPOModelTrainerTests(unittest.TestCase):
         self.assertEqual(metrics_lines[0]["phase"], "grpo_model_training")
         self.assertEqual(checkpoint["kind"], "grpo_model_training_checkpoint")
         self.assertTrue(checkpoint["has_real_model_weights"])
+        self.assertTrue(checkpoint["has_state_artifacts"])
+        self.assertEqual(set(artifacts), {"policy_model_state", "optimizer_state"})
+        self.assertEqual(len(artifacts["policy_model_state"]["sha256"]), 64)
+        self.assertGreater(artifacts["optimizer_state"]["bytes"], 0)
+        self.assertIn("logit_table", loaded_policy_state)
 
     def test_model_training_uses_reference_model_for_kl(self) -> None:
         policy_model = _ToyCausalLM(vocab_size=8)
@@ -121,6 +133,9 @@ class _ToyCausalLM:
 
     def eval(self) -> None:
         self.eval_called = True
+
+    def state_dict(self) -> dict[str, object]:
+        return {"logit_table": self.logit_table.detach().clone()}
 
     def __call__(self, *, input_ids: object, attention_mask: object) -> object:
         return SimpleNamespace(logits=self.logit_table[input_ids])

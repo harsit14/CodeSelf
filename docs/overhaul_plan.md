@@ -335,15 +335,28 @@ Sixth slice shipped:
   files, checkpoint manifests, reference-model KL wiring, and invalid config
   cases.
 
+Seventh slice shipped:
+
+- Added explicit Torch state checkpoint writing for the model-aware GRPO
+  trainer.
+- Added `GRPOCheckpointArtifact` records for checkpoint artifact kind, path,
+  byte size, and SHA-256 digest.
+- `run_grpo_model_training()` now accepts `state_dir` and can write
+  `policy_model.pt`, `optimizer.pt`, and optional `scheduler.pt` state files.
+- Checkpoint manifests now include `has_state_artifacts` and artifact checksum
+  metadata when state files are written.
+- Active Torch tests now load the saved policy state, verify optimizer state
+  artifacts, and check SHA-256 metadata.
+
 Remaining risks:
 
 - This now updates parameters through a model-aware trainer for Torch modules,
   but it is not yet wired to rollout collection or a real Transformers model.
 - Old-policy and reference logprobs can now come from records or optional model
   forward passes, but they are not yet connected to rollout collection.
-- Scheduler stepping is supported, but checkpointing, LoRA attachment, and a
-  Transformers-backed causal-LM trainer are not wired yet. The checkpoint
-  manifest records metadata but does not save model weights.
+- Scheduler stepping and Torch state checkpointing are supported, but LoRA
+  adapter-specific checkpointing and a Transformers-backed causal-LM trainer are
+  not wired yet.
 - Group sampling is still represented by batch grouping rather than a full
   generate -> execute -> score -> optimize loop.
 

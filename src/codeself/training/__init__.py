@@ -68,6 +68,7 @@ from codeself.training.grpo_model import (
     pad_training_batch_tensors,
 )
 from codeself.training.grpo_trainer import (
+    GRPOCheckpointArtifact,
     GRPOModelTrainingConfig,
     GRPOModelTrainingResult,
     run_grpo_model_training,
@@ -117,6 +118,7 @@ __all__ = [
     "GenerationRequest",
     "GRPOAdvantageResult",
     "GRPOGroupAdvantage",
+    "GRPOCheckpointArtifact",
     "GRPOLossConfig",
     "GRPOLossResult",
     "GRPOModelTrainingConfig",
