@@ -205,10 +205,28 @@ First slice shipped:
 - Added `configs/experiments/training_core_debug.example.json` as the first
   real-training-core config example.
 
+Second slice shipped:
+
+- Added dependency-free tokenizer contracts and a deterministic whitespace
+  tokenizer for smoke tests.
+- Added prompt/response token packing with default left-truncation for prompts
+  and right-truncation for responses.
+- Added generated-sequence records that can convert into existing
+  `SequenceTrainingSample` records.
+- Added model-engine and generation-request contracts for future GRPO/PPO
+  trainers.
+- Added lazy Hugging Face Transformers tokenizer/model adapters. Importing
+  `codeself.training` still does not import Torch or Transformers.
+- Added token-aligned policy-logprob extraction for the optional Transformers
+  engine.
+- Added `configs/experiments/model_engine_debug.example.json` for the first
+  local model-engine target.
+
 Remaining risks:
 
-- No Transformers, PEFT, or Torch model loading is implemented yet.
-- No rollout tensorization from actual tokenizer output is implemented yet.
+- Transformers loading is only an optional engine shell. It still needs a slow
+  integration test with an actually cached tiny model.
+- PEFT/LoRA adapter attachment is not implemented yet.
 - No GRPO/PPO loss is implemented yet; the current work defines the data and
   masking contracts those losses should consume.
 - Backend availability checks report optional dependency presence, but do not
