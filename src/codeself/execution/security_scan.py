@@ -42,19 +42,38 @@ BLOCKED_CALLS = {
     "compile",
     "eval",
     "exec",
+    "exit",
+    "delattr",
+    "getattr",
     "globals",
+    "hasattr",
     "input",
     "locals",
     "open",
+    "quit",
+    "setattr",
+    "SystemExit",
     "vars",
 }
 
 BLOCKED_ATTRIBUTES = {
+    "__builtins__",
+    "__class__",
+    "__code__",
+    "__closure__",
+    "__dict__",
+    "__getattribute__",
+    "__globals__",
+    "__mro__",
+    "__subclasses__",
     "connect",
     "kill",
+    "mro",
     "mkdir",
     "open",
     "popen",
+    "read",
+    "read_text",
     "remove",
     "rename",
     "replace",
@@ -64,6 +83,12 @@ BLOCKED_ATTRIBUTES = {
     "system",
     "unlink",
     "write",
+}
+
+BLOCKED_RAISES = {
+    "GeneratorExit",
+    "KeyboardInterrupt",
+    "SystemExit",
 }
 
 
@@ -120,6 +145,17 @@ class _SecurityVisitor(ast.NodeVisitor):
             self._add("blocked_attribute", f"blocked attribute call: {attribute}", node.lineno)
         self.generic_visit(node)
 
+    def visit_Attribute(self, node: ast.Attribute) -> None:  # noqa: N802
+        if node.attr in BLOCKED_ATTRIBUTES:
+            self._add("blocked_attribute", f"blocked attribute access: {node.attr}", node.lineno)
+        self.generic_visit(node)
+
+    def visit_Raise(self, node: ast.Raise) -> None:  # noqa: N802
+        raised = _raised_name(node.exc)
+        if raised in BLOCKED_RAISES:
+            self._add("blocked_raise", f"blocked raise: {raised}", node.lineno)
+        self.generic_visit(node)
+
     def _add(self, rule: str, message: str, line: int | None) -> None:
         self.findings.append(SecurityFinding(rule=rule, message=message, line=line))
 
@@ -138,4 +174,12 @@ def _call_name(node: ast.AST) -> str | None:
 def _attribute_name(node: ast.AST) -> str | None:
     if isinstance(node, ast.Attribute):
         return node.attr
+    return None
+
+
+def _raised_name(node: ast.AST | None) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Call):
+        return _call_name(node.func)
     return None

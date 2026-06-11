@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -8,7 +9,13 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.datasets import ResourceLimits, Split, TaskSpec, TestSpec
-from codeself.execution import DockerSandboxRunner, ExecutionJob, PhaseStatus, SandboxedTestRunner
+from codeself.execution import (
+    DockerSandboxRunner,
+    ExecutionJob,
+    PhaseStatus,
+    SandboxedTestRunner,
+    SubprocessSandboxRunner,
+)
 
 
 def _task(
@@ -58,6 +65,24 @@ class SandboxedTestRunnerTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.status, PhaseStatus.SECURITY_REJECTED)
         self.assertGreaterEqual(len(result.security_findings), 1)
+
+    def test_security_scan_rejects_successful_system_exit(self) -> None:
+        task = _task(public_code="assert stop() == 1")
+        result = SandboxedTestRunner().run(task, "def stop():\n    raise SystemExit(0)")
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, PhaseStatus.SECURITY_REJECTED)
+        self.assertTrue(any(finding.rule == "blocked_call" for finding in result.security_findings))
+
+    def test_security_scan_rejects_introspection_escape_surface(self) -> None:
+        task = _task(public_code="assert reveal(1) == 1")
+        result = SandboxedTestRunner().run(task, "def reveal(x):\n    return x.__class__")
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, PhaseStatus.SECURITY_REJECTED)
+        self.assertTrue(
+            any(finding.message.endswith("__class__") for finding in result.security_findings)
+        )
 
     def test_timeout_is_reported(self) -> None:
         task = _task(
@@ -115,6 +140,24 @@ class SandboxedTestRunnerTests(unittest.TestCase):
         self.assertTrue(results[0].result.passed)
         self.assertFalse(results[1].result.passed)
 
+    def test_runtime_harness_blocks_builtins_open_even_without_static_scan(self) -> None:
+        phase = SubprocessSandboxRunner().run_phase(
+            phase_name="public_tests",
+            candidate_code=(
+                "import builtins\n\n"
+                "def add_one(x):\n"
+                "    builtins.open('run_phase.py')\n"
+                "    return x + 1\n"
+            ),
+            phase_code="assert add_one(1) == 2",
+            limits=ResourceLimits(timeout_seconds=1.0, memory_mb=256),
+            tests_run=1,
+        )
+
+        self.assertFalse(phase.passed)
+        self.assertEqual(phase.status, PhaseStatus.FAILED)
+        self.assertIn("operation is disabled", phase.stderr)
+
 
 class DockerSandboxRunnerTests(unittest.TestCase):
     def test_docker_command_includes_final_eval_isolation_flags(self) -> None:
@@ -128,6 +171,50 @@ class DockerSandboxRunnerTests(unittest.TestCase):
         self.assertIn("--read-only", command)
         self.assertIn("--memory 128m", command_text)
         self.assertIn("--pids-limit", command)
+        self.assertIn("--cap-drop ALL", command_text)
+        self.assertIn("--security-opt no-new-privileges", command_text)
+        self.assertIn("--tmpfs /tmp:rw,noexec,nosuid,size=16m", command_text)
+        self.assertIn("--memory-swap 128m", command_text)
+
+    def test_docker_runner_can_execute_with_injected_command_runner(self) -> None:
+        calls = []
+
+        def fake_runner(command: list[str], timeout_seconds: float):
+            calls.append((command, timeout_seconds))
+            mount = next(item for item in command if item.startswith("type=bind,source="))
+            source = mount.split("source=", 1)[1].split(",target=", 1)[0]
+            self.assertTrue((Path(source) / "candidate.py").exists())
+            self.assertTrue((Path(source) / "run_phase.py").exists())
+            return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+        limits = ResourceLimits(timeout_seconds=1.5, memory_mb=128)
+        result = DockerSandboxRunner(command_runner=fake_runner).run_phase(
+            phase_name="public_tests",
+            candidate_code="def add_one(x):\n    return x + 1",
+            phase_code="assert add_one(1) == 2",
+            limits=limits,
+            tests_run=1,
+        )
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.stdout, "ok")
+        self.assertEqual(calls[0][1], limits.timeout_seconds)
+
+    def test_docker_runner_reports_missing_docker_as_runtime_error(self) -> None:
+        def missing_runner(command: list[str], timeout_seconds: float):
+            raise FileNotFoundError("docker")
+
+        result = DockerSandboxRunner(command_runner=missing_runner).run_phase(
+            phase_name="public_tests",
+            candidate_code="def add_one(x):\n    return x + 1",
+            phase_code="assert add_one(1) == 2",
+            limits=ResourceLimits(timeout_seconds=1.0, memory_mb=128),
+            tests_run=1,
+        )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, PhaseStatus.RUNTIME_ERROR)
+        self.assertIn("docker executable not found", result.error)
 
 
 if __name__ == "__main__":

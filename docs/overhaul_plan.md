@@ -71,10 +71,29 @@ First slice shipped:
   with a bounded worker pool and returns results in input order.
 - Subprocess timeouts now terminate the spawned process group on POSIX hosts.
 
+Second slice shipped:
+
+- Shared phase harness code now catches `SystemExit`, `KeyboardInterrupt`, and
+  `GeneratorExit` so generated code cannot turn a control-flow exit into a
+  false pass.
+- Static scanning rejects direct `SystemExit`, `exit`, `quit`, reflection
+  helpers, and common Python introspection escape surfaces such as
+  `__class__`, `__subclasses__`, `__globals__`, and `__builtins__`.
+- Runtime startup hardening blocks `open`, `input`, `eval`, `breakpoint`,
+  `exit`, and `quit` as a defense-in-depth layer for paths that bypass the
+  static scan.
+- `DockerSandboxRunner.run_phase()` now writes the same phase harness files and
+  executes them through Docker, with an injectable command runner so unit tests
+  do not require Docker to be installed.
+- Docker commands now include no network, read-only root, all capabilities
+  dropped, no-new-privileges, pids limit, CPU limit, memory and memory-swap
+  limits, non-root user, read-only task mount, and a small `/tmp` tmpfs.
+
 Remaining risks:
 
 - The local subprocess path is still not a full jail. Final evaluation needs the
-  container path to become executable, not just a command builder.
+  container path to be exercised in a slow integration test against a built
+  image.
 - Static scanning remains bypassable by sufficiently adversarial Python object
   tricks.
 - The test harness still materializes executable test code in the temporary

@@ -8,12 +8,12 @@ import platform
 import subprocess
 import sys
 import tempfile
-import textwrap
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from codeself.datasets import ResourceLimits
+from codeself.execution.harness import write_phase_files
 from codeself.execution.results import PhaseResult, PhaseStatus
 
 
@@ -42,9 +42,7 @@ class SubprocessSandboxRunner:
     ) -> PhaseResult:
         with tempfile.TemporaryDirectory(prefix="codeself-run-") as tmpdir:
             temp_path = Path(tmpdir)
-            (temp_path / "sitecustomize.py").write_text(_sitecustomize_code(), encoding="utf-8")
-            (temp_path / "candidate.py").write_text(candidate_code, encoding="utf-8")
-            (temp_path / "run_phase.py").write_text(_runner_code(phase_code), encoding="utf-8")
+            write_phase_files(temp_path, candidate_code=candidate_code, phase_code=phase_code)
 
             start = time.monotonic()
             process = subprocess.Popen(
@@ -87,18 +85,6 @@ class SubprocessSandboxRunner:
                 error="" if status == PhaseStatus.PASSED else _last_line(stderr),
                 tests_run=tests_run,
             )
-
-
-def _runner_code(phase_code: str) -> str:
-    indented = textwrap.indent(phase_code, "    ")
-    return (
-        "from candidate import *\n\n"
-        "def __codeself_run_phase():\n"
-        f"{indented if indented.strip() else '    pass'}\n\n"
-        "if __name__ == '__main__':\n"
-        "    __codeself_run_phase()\n"
-    )
-
 
 def _clean_environment(temp_path: Path) -> dict[str, str]:
     return {
@@ -171,20 +157,6 @@ def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
         process.kill()
     except OSError:
         pass
-
-
-def _sitecustomize_code() -> str:
-    return """
-import socket
-
-
-def _codeself_blocked_network(*args, **kwargs):
-    raise RuntimeError("network access is disabled by CodeSelf sandbox")
-
-
-socket.socket = _codeself_blocked_network
-socket.create_connection = _codeself_blocked_network
-"""
 
 
 def _truncate(value: str | bytes, limit: int) -> str:
