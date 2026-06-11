@@ -466,11 +466,25 @@ Second slice shipped:
 - Added active Torch tests for numerical parity with the reference objective,
   variable-length padding, and differentiability through policy and value terms.
 
+Third slice shipped:
+
+- Added a lazy optional Torch PPO optimizer-step helper over prepared tensor
+  batches.
+- Added `PPOOptimizerStepConfig` for loss config, gradient accumulation,
+  gradient clipping, zero-grad behavior, and optimizer stepping.
+- Added `PPOOptimizerStepResult` with detached diagnostics for total, policy,
+  value, entropy, KL, ratio, advantage, return, and clipping metrics.
+- `run_ppo_optimizer_step()` now computes the tensor PPO loss, scales it for
+  gradient accumulation, calls backward, optionally clips gradients, optionally
+  steps the optimizer, and returns metrics.
+- Added active Torch tests for config validation, missing-Torch behavior, real
+  policy/value parameter updates, and accumulation without optimizer stepping.
+
 Remaining risks:
 
-- PPO now has dependency-free and Torch objective implementations; it still
-  needs value-head model wiring, optimizer step, and online trainer parity with
-  the completed GRPO path.
+- PPO now has dependency-free and Torch objective implementations plus an
+  optimizer step; it still needs value-head model wiring and online trainer
+  parity with the completed GRPO path.
 - Rollout budget and dev-evaluation parity with GRPO should be enforced once the
   PPO online trainer exists.
 

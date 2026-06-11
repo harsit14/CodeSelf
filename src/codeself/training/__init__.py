@@ -145,6 +145,11 @@ from codeself.training.ppo_torch import (
     build_ppo_tensor_batch,
     compute_ppo_tensor_loss,
 )
+from codeself.training.ppo_step import (
+    PPOOptimizerStepConfig,
+    PPOOptimizerStepResult,
+    run_ppo_optimizer_step,
+)
 
 __all__ = [
     "AlgorithmComparison",
@@ -199,6 +204,8 @@ __all__ = [
     "PPOValueEstimate",
     "PPOValueTarget",
     "PPOValueTargetResult",
+    "PPOOptimizerStepConfig",
+    "PPOOptimizerStepResult",
     "PaddedTrainingTensors",
     "RolloutRuntimeConfig",
     "SequenceTrainingSample",
@@ -251,6 +258,7 @@ __all__ = [
     "run_grpo_optimizer_step",
     "run_grpo_rollout_training_cycle",
     "run_grpo_training_loop",
+    "run_ppo_optimizer_step",
     "select_best_run",
     "summarize_grpo_step",
     "summarize_logprobs",
