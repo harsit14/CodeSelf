@@ -348,17 +348,34 @@ Seventh slice shipped:
 - Active Torch tests now load the saved policy state, verify optimizer state
   artifacts, and check SHA-256 metadata.
 
+Eighth slice shipped:
+
+- Added a rollout-to-GRPO batch bridge that converts `RolloutRecord` objects
+  into tokenized `TrainingBatch` samples.
+- The bridge uses raw model completions by default, with an explicit
+  `parsed_code` option for experiments that should optimize only extracted
+  Python code.
+- Added parse-failure, empty-response, and invalid-reward skip diagnostics so
+  bad rollout streams fail visibly instead of silently producing weak batches.
+- Group-relative advantages are assigned as part of batch construction, keeping
+  the output ready for the existing GRPO tensor/model trainer path.
+- Added metadata carry-through for backend, model name, parse status, reward
+  name, execution pass/fail, truncation, and scalar rollout/generation fields.
+
 Remaining risks:
 
-- This now updates parameters through a model-aware trainer for Torch modules,
-  but it is not yet wired to rollout collection or a real Transformers model.
+- This now updates parameters through a model-aware trainer for Torch modules
+  and can consume generated rollout records, but it is not yet a single
+  generate -> execute -> optimize loop.
 - Old-policy and reference logprobs can now come from records or optional model
-  forward passes, but they are not yet connected to rollout collection.
+  forward passes, but old-policy logprob capture during rollout collection is
+  still not wired.
 - Scheduler stepping and Torch state checkpointing are supported, but LoRA
   adapter-specific checkpointing and a Transformers-backed causal-LM trainer are
   not wired yet.
-- Group sampling is still represented by batch grouping rather than a full
-  generate -> execute -> score -> optimize loop.
+- Group sampling is represented by grouped rollout records. The trainer still
+  needs a live collector that samples multiple completions per prompt from the
+  current policy before each optimize step.
 
 ## Phase 6: PPO Baseline
 

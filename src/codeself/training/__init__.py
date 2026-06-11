@@ -61,6 +61,12 @@ from codeself.training.grpo_loss import (
     assign_group_relative_advantages,
     compute_grpo_loss,
 )
+from codeself.training.grpo_rollouts import (
+    GRPORolloutBatchConfig,
+    GRPORolloutBatchResult,
+    SkippedRollout,
+    build_grpo_training_batch_from_rollouts,
+)
 from codeself.training.grpo_model import (
     PaddedTrainingTensors,
     build_grpo_tensor_batch_from_model,
@@ -118,6 +124,8 @@ __all__ = [
     "GenerationRequest",
     "GRPOAdvantageResult",
     "GRPOGroupAdvantage",
+    "GRPORolloutBatchConfig",
+    "GRPORolloutBatchResult",
     "GRPOCheckpointArtifact",
     "GRPOLossConfig",
     "GRPOLossResult",
@@ -148,6 +156,7 @@ __all__ = [
     "PaddedTrainingTensors",
     "RolloutRuntimeConfig",
     "SequenceTrainingSample",
+    "SkippedRollout",
     "TensorBatchBuilder",
     "TokenizedPromptResponse",
     "TokenizedText",
@@ -169,6 +178,7 @@ __all__ = [
     "build_generated_sequence",
     "build_grpo_tensor_batch_from_model",
     "build_grpo_tensor_batch",
+    "build_grpo_training_batch_from_rollouts",
     "build_prompt_response_mask",
     "build_grpo_experiment_matrix",
     "build_training_core_config",
