@@ -190,6 +190,12 @@ class OnlineTrainingConfigBuilderTests(unittest.TestCase):
                 False,
                 ROOT / "configs/experiments/ppo_online_toy_launch.example.yaml",
             ),
+            (
+                "ppo",
+                "self_debug",
+                True,
+                ROOT / "configs/experiments/ppo_online_transformers_launch.example.yaml",
+            ),
         )
 
         for algorithm, rollout_mode, evaluation_enabled, path in cases:

@@ -789,12 +789,27 @@ Fifth slice shipped:
 - Added tests for GRPO launch execution, PPO launch execution through the CLI,
   example config parsing, and the explicit PPO Transformers value-head guardrail.
 
+Sixth slice shipped:
+
+- Added `CausalLMWithValueHead`, a causal-LM wrapper that requests hidden states
+  and returns token-level PPO values beside policy logits.
+- Updated the single-config launcher so `model.backend=transformers` works for
+  PPO by wrapping the loaded policy model with an integrated value head.
+- Kept generation tied to the same underlying Transformers policy model, so PPO
+  online rollouts and optimization share the trainable causal-LM weights.
+- Added optional old-policy/old-value value-head model assembly for PPO
+  snapshot configs.
+- Added `ppo_online_transformers_launch.example.yaml` as the real PPO local
+  Transformers launch template.
+- Replaced the previous PPO Transformers guardrail test with an offline fake
+  Transformers PPO launch test, plus direct value-head shape coverage.
+
 Remaining risks:
 
-- GRPO now has a real single-config launcher path for local Transformers
-  causal-LM policies. PPO launch works through the toy backend, but real PPO
-  still needs a value-head model integration before `model.backend=transformers`
-  can run end to end.
+- GRPO and PPO now both have single-config launcher paths for local
+  Transformers causal-LM policies. The launcher still does not assemble LoRA or
+  a separately pretrained critic/value model; it uses full fine-tuning with an
+  integrated PPO value head.
 - Model revision uses the same generator backend and sampling settings as the
   initial attempt. Later work should split initial and revision generation
   configs for more precise ablations.

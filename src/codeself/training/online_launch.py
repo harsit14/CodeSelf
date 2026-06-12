@@ -31,6 +31,7 @@ from codeself.training.online_config import (
     resolve_online_algorithm,
 )
 from codeself.training.ppo_online import PPOOnlineTrainingResult, run_ppo_online_training
+from codeself.training.ppo_value_head import CausalLMWithValueHead
 
 OnlineTrainingResult = GRPOOnlineTrainingResult | PPOOnlineTrainingResult
 
@@ -345,12 +346,6 @@ def _build_transformers_components(
     config: dict[str, Any],
     algorithm: OnlineAlgorithm,
 ) -> _LauncherComponents:
-    if algorithm == "ppo":
-        raise ValueError(
-            "PPO with model.backend=transformers requires a value-head model surface, "
-            "which this launcher does not assemble yet. Use model.backend=toy for "
-            "launcher smoke tests or add a value model integration first."
-        )
     model_config = _build_model_runtime_config(config)
     if model_config.use_lora:
         raise ValueError(
@@ -363,16 +358,37 @@ def _build_transformers_components(
         device_map=_optional_str(config_get(config, "model.device_map")),
     )
     policy_engine = TransformersModelEngine(engine_config)
+    policy_model = policy_engine.model
+    value_model = None
+    old_value_model = None
+    if algorithm == "ppo":
+        policy_model = CausalLMWithValueHead(
+            policy_engine.model,
+            hidden_size=_optional_int(config_get(config, "model.value_head.hidden_size")),
+        )
     generator = ModelEngineCodeGenerator(
         policy_engine,
         model_name=model_config.name,
         backend_name="policy_engine",
     )
-    old_policy_model = _optional_transformers_model(
-        config,
-        engine_config,
-        "model.old_policy.enabled",
-    )
+    if algorithm == "ppo":
+        old_policy_model = _optional_transformers_value_head_model(
+            config,
+            engine_config,
+            "model.old_policy.enabled",
+        )
+        if bool(config_get(config, "model.old_value.enabled", False)):
+            old_value_model = old_policy_model or _optional_transformers_value_head_model(
+                config,
+                engine_config,
+                "model.old_value.enabled",
+            )
+    else:
+        old_policy_model = _optional_transformers_model(
+            config,
+            engine_config,
+            "model.old_policy.enabled",
+        )
     reference_model = _optional_transformers_model(
         config,
         engine_config,
@@ -384,8 +400,10 @@ def _build_transformers_components(
         generator=generator,
         eval_generator=None,
         tokenizer=policy_engine.tokenizer,
-        policy_model=policy_engine.model,
+        policy_model=policy_model,
+        value_model=value_model,
         old_policy_model=old_policy_model,
+        old_value_model=old_value_model,
         reference_model=reference_model,
     )
 
@@ -423,6 +441,19 @@ def _optional_transformers_model(
     if not bool(config_get(config, enabled_path, False)):
         return None
     return TransformersModelEngine(engine_config).model
+
+
+def _optional_transformers_value_head_model(
+    config: dict[str, Any],
+    engine_config: TransformersEngineConfig,
+    enabled_path: str,
+) -> CausalLMWithValueHead | None:
+    if not bool(config_get(config, enabled_path, False)):
+        return None
+    return CausalLMWithValueHead(
+        TransformersModelEngine(engine_config).model,
+        hidden_size=_optional_int(config_get(config, "model.value_head.hidden_size")),
+    )
 
 
 def _build_non_policy_generator(
@@ -493,6 +524,12 @@ def _optional_str(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)
 
 
 class _TinyOnlineCausalLM:

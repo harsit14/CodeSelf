@@ -184,6 +184,7 @@ from codeself.training.ppo_torch import (
     build_ppo_tensor_batch,
     compute_ppo_tensor_loss,
 )
+from codeself.training.ppo_value_head import CausalLMWithValueHead
 from codeself.training.ppo_step import (
     PPOOptimizerStepConfig,
     PPOOptimizerStepResult,
@@ -207,6 +208,7 @@ __all__ = [
     "AlgorithmComparison",
     "BackendAvailability",
     "BackendSpec",
+    "CausalLMWithValueHead",
     "GeneratedSequence",
     "GenerationRequest",
     "GRPOAdvantageResult",
