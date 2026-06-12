@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,7 @@ from codeself.agent import (  # noqa: E402
     DIRECT_SOLUTION_TEMPLATE,
     StaticGenerator,
     generate_rollouts,
+    write_rollouts_jsonl,
 )
 from codeself.datasets import Split, TaskSpec, TestSpec  # noqa: E402
 from codeself.evaluation import (  # noqa: E402
@@ -77,6 +79,8 @@ class EvaluationDashboardTests(unittest.TestCase):
             evaluation_path = tmp_path / "evaluation.json"
             comparison_path = tmp_path / "comparison.json"
             dashboard_path = tmp_path / "dashboard.html"
+            artifact_dir = tmp_path / "online"
+            _write_cycle(artifact_dir / "cycle_0001", _passing_rollouts("dashboard/curve"))
             write_evaluation_report(evaluation, evaluation_path)
             write_comparison_report(comparison, comparison_path)
 
@@ -88,6 +92,8 @@ class EvaluationDashboardTests(unittest.TestCase):
                     f"eval={evaluation_path}",
                     "--comparison",
                     f"cmp={comparison_path}",
+                    "--curve",
+                    f"online={artifact_dir}",
                     "--output",
                     str(dashboard_path),
                     "--title",
@@ -104,7 +110,9 @@ class EvaluationDashboardTests(unittest.TestCase):
         self.assertIn("wrote evaluation dashboard", completed.stdout)
         self.assertIn("evaluation_reports: 1", completed.stdout)
         self.assertIn("comparison_reports: 1", completed.stdout)
+        self.assertIn("curve_reports: 1", completed.stdout)
         self.assertIn("Unit Dashboard", html)
+        self.assertIn("Learning Curves", html)
         self.assertIn("cmp", html)
 
 
@@ -152,6 +160,33 @@ def _failing_rollouts(task_id: str):
     for record in records:
         record.metadata["difficulty"] = "hard"
     return records
+
+
+def _write_cycle(cycle_dir: Path, rollouts) -> None:
+    cycle_dir.mkdir(parents=True, exist_ok=True)
+
+    write_rollouts_jsonl(rollouts, cycle_dir / "rollouts.jsonl")
+    metric = {
+        "phase": "ppo_model_training",
+        "step": 1,
+        "metrics": {
+            "optimizer_step": True,
+            "metrics": {
+                "loss": 0.4,
+                "policy_loss": -0.1,
+                "value_loss": 0.5,
+                "entropy_loss": -0.01,
+                "kl_loss": 0.02,
+                "mean_approx_kl": 0.03,
+            },
+        },
+    }
+    (cycle_dir / "metrics.jsonl").write_text(json.dumps(metric) + "\n", encoding="utf-8")
+    (cycle_dir / "checkpoint.json").write_text(
+        json.dumps({"loop": {"optimizer_step_count": 1}}),
+        encoding="utf-8",
+    )
+    write_evaluation_report(evaluate_rollouts(rollouts, ks=(1,)), cycle_dir / "evaluation.json")
 
 
 if __name__ == "__main__":

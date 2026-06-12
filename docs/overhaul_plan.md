@@ -1,6 +1,6 @@
 # CodeSelf Overhaul Plan
 
-Updated: 2026-06-11
+Updated: 2026-06-12
 
 This is the living engineering record for turning CodeSelf from a smoke
 research scaffold into a runnable execution-feedback RL framework. Each phase
@@ -644,14 +644,36 @@ Third slice shipped:
 - Added tests for Python rendering, HTML escaping, evaluation/comparison
   sections, inline charts, CLI generation, and report counts.
 
+Fourth slice shipped:
+
+- Added `LearningCurvePoint` and `LearningCurveRun` records for summarizing
+  online GRPO/PPO artifact directories over repeated training cycles.
+- Added `collect_learning_curve()` and `collect_learning_curves()` to parse
+  `cycle_*` directories containing rollout JSONL, metric JSONL, checkpoint
+  manifests, and optional evaluation reports.
+- The collector reports cycle counts, rollout counts, optimizer steps, train
+  pass@1, train reward, response length, degenerate-output rate, train losses,
+  KL terms, and dev-evaluation metrics when available.
+- Extended `render_evaluation_dashboard()`, `write_evaluation_dashboard()`,
+  and `scripts/render_evaluation_dashboard.py` with labeled `--curve`
+  artifact inputs.
+- The dashboard now includes a Learning Curves section with cycle tables and
+  inline SVG trend charts for train/eval pass@1, reward, loss, entropy, KL,
+  response length, and degenerate-output rate.
+- Added tests for artifact parsing, metric aggregation, missing-directory
+  validation, dashboard rendering, CLI curve inputs, and report counts.
+
 Remaining risks:
 
 - Degenerate-output detection is intentionally heuristic; it flags empty outputs
   and obvious repetition, but richer task-aware failure tagging still belongs in
   later dashboard work.
-- Phase 7 now has static dashboard generation, but it still needs learning-curve
-  aggregation from multi-cycle training artifact directories and richer raw
-  rollout browsing.
+- Learning-curve plotting now reads multi-cycle artifact directories, but richer
+  raw rollout browsing and filterable failure taxonomies still belong in later
+  dashboard work.
+- KL and entropy curves depend on trainer metric availability. Missing fields
+  currently render as zero rather than trying to infer absent optimization
+  diagnostics.
 
 ## Phase 8: Self-Debug Training Mode
 

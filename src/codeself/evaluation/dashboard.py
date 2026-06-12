@@ -30,12 +30,14 @@ def render_evaluation_dashboard(
     title: str,
     evaluations: Mapping[str, JsonMapping],
     comparisons: Mapping[str, JsonMapping] | None = None,
+    curves: Mapping[str, JsonMapping] | None = None,
 ) -> str:
     """Render a static dashboard from evaluation and comparison JSON payloads."""
 
-    if not evaluations and not comparisons:
-        raise ValueError("dashboard requires at least one evaluation or comparison")
+    if not evaluations and not comparisons and not curves:
+        raise ValueError("dashboard requires at least one report or curve")
     comparison_payloads = comparisons or {}
+    curve_payloads = curves or {}
     safe_title = _escape(title)
     parts = [
         "<!doctype html>",
@@ -55,6 +57,8 @@ def render_evaluation_dashboard(
         parts.extend(_render_evaluation_section(evaluations))
     if comparison_payloads:
         parts.extend(_render_comparison_section(comparison_payloads))
+    if curve_payloads:
+        parts.extend(_render_curve_section(curve_payloads))
     parts.extend(["</main>", "</body>", "</html>"])
     return "\n".join(parts) + "\n"
 
@@ -65,6 +69,7 @@ def write_evaluation_dashboard(
     title: str,
     evaluations: Mapping[str, JsonMapping],
     comparisons: Mapping[str, JsonMapping] | None = None,
+    curves: Mapping[str, JsonMapping] | None = None,
 ) -> None:
     """Write a static HTML dashboard file."""
 
@@ -75,6 +80,7 @@ def write_evaluation_dashboard(
             title=title,
             evaluations=evaluations,
             comparisons=comparisons,
+            curves=curves,
         ),
         encoding="utf-8",
     )
@@ -336,6 +342,97 @@ def _render_comparison_section(comparisons: Mapping[str, JsonMapping]) -> list[s
     return output
 
 
+def _render_curve_section(curves: Mapping[str, JsonMapping]) -> list[str]:
+    rows = []
+    series: dict[str, list[tuple[str, float]]] = {
+        "Train pass@1": [],
+        "Eval pass@1": [],
+        "Reward": [],
+        "Loss": [],
+        "Entropy": [],
+        "KL": [],
+        "Degenerate": [],
+        "Response length": [],
+    }
+    for label, run in curves.items():
+        for point in _list(run, "points"):
+            cycle = int(point.get("cycle", 0))
+            rows.append(
+                [
+                    label,
+                    cycle,
+                    int(point.get("rollout_count", 0)),
+                    int(point.get("optimizer_steps", 0)),
+                    float(point.get("train_pass_at_1", 0.0)),
+                    _optional_number(point.get("eval_pass_at_1")),
+                    float(point.get("train_reward_mean", 0.0)),
+                    float(point.get("train_loss", 0.0)),
+                    float(point.get("policy_loss", 0.0)),
+                    float(point.get("value_loss", 0.0)),
+                    float(point.get("entropy_loss", 0.0)),
+                    float(point.get("kl_loss", 0.0)),
+                    float(point.get("mean_approx_kl", 0.0)),
+                    float(point.get("train_degenerate_rate", 0.0)),
+                    float(point.get("train_response_token_mean", 0.0)),
+                ]
+            )
+            prefix = f"{label} c{cycle}"
+            series["Train pass@1"].append((prefix, float(point.get("train_pass_at_1", 0.0))))
+            if isinstance(point.get("eval_pass_at_1"), (int, float)):
+                series["Eval pass@1"].append((prefix, float(point.get("eval_pass_at_1", 0.0))))
+            series["Reward"].append((prefix, float(point.get("train_reward_mean", 0.0))))
+            series["Loss"].append((prefix, float(point.get("train_loss", 0.0))))
+            series["Entropy"].append((prefix, float(point.get("entropy_loss", 0.0))))
+            series["KL"].append((prefix, float(point.get("mean_approx_kl", 0.0))))
+            series["Degenerate"].append(
+                (prefix, float(point.get("train_degenerate_rate", 0.0)))
+            )
+            series["Response length"].append(
+                (prefix, float(point.get("train_response_token_mean", 0.0)))
+            )
+    output = [
+        '<section class="band">',
+        "<h2>Learning Curves</h2>",
+        _table(
+            (
+                "Run",
+                "Cycle",
+                "Rollouts",
+                "Opt Steps",
+                "Train pass@1",
+                "Eval pass@1",
+                "Reward",
+                "Loss",
+                "Policy",
+                "Value",
+                "Entropy",
+                "KL Loss",
+                "Approx KL",
+                "Degenerate",
+                "Resp Tokens",
+            ),
+            rows,
+            numeric_columns={1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14},
+        ),
+    ]
+    for title, values in series.items():
+        if not values:
+            continue
+        floor_upper = (
+            1.0
+            if title in {"Train pass@1", "Eval pass@1", "Reward", "Degenerate"}
+            else 0.0
+        )
+        output.extend(
+            [
+                f"<h3>{_escape(title)}</h3>",
+                _line_chart(values, floor_upper=floor_upper),
+            ]
+        )
+    output.append("</section>")
+    return output
+
+
 def _table(
     headers: tuple[str, ...],
     rows: list[list[object]],
@@ -358,6 +455,55 @@ def _table(
             cells.append(f"<td{class_name}>{_format_cell(value)}</td>")
         parts.append("<tr>" + "".join(cells) + "</tr>")
     parts.extend(["</tbody>", "</table></div>"])
+    return "\n".join(parts)
+
+
+def _line_chart(values: list[tuple[str, float]], *, floor_upper: float = 0.0) -> str:
+    width = 760
+    height = 220
+    left = 56
+    right = 22
+    top = 18
+    bottom = 44
+    chart_width = width - left - right
+    chart_height = height - top - bottom
+    raw_values = [value for _, value in values]
+    lower = min(0.0, min(raw_values))
+    upper = max(0.0, floor_upper, max(raw_values))
+    if upper == lower:
+        upper = lower + 1.0
+    span = upper - lower
+    step = chart_width / max(1, len(values) - 1)
+    points: list[tuple[float, float]] = []
+    for index, (_, value) in enumerate(values):
+        x = left + index * step
+        y = top + chart_height - ((value - lower) / span * chart_height)
+        points.append((x, y))
+    zero_y = top + chart_height - ((0.0 - lower) / span * chart_height)
+    path = " ".join(
+        f"{'M' if index == 0 else 'L'} {x:.2f} {y:.2f}"
+        for index, (x, y) in enumerate(points)
+    )
+    parts = [
+        f'<svg class="chart line-chart" viewBox="0 0 {width} {height}" role="img">',
+        f'<line class="axis" x1="{left}" y1="{zero_y:.2f}" '
+        f'x2="{width - right}" y2="{zero_y:.2f}"></line>',
+        f'<line class="axis" x1="{left}" y1="{top}" x2="{left}" '
+        f'y2="{height - bottom}"></line>',
+        f'<path class="line-path" d="{path}"></path>',
+    ]
+    for index, ((label, value), (x, y)) in enumerate(zip(values, points, strict=True)):
+        parts.append(f'<circle class="line-point" cx="{x:.2f}" cy="{y:.2f}" r="3"></circle>')
+        if index == 0 or index == len(values) - 1:
+            parts.append(
+                f'<text class="chart-label" x="{x:.2f}" y="{height - 16}">'
+                f"{_escape(label)}</text>"
+            )
+        parts.append(
+            f'<text class="chart-value mini" x="{x + 4:.2f}" y="{y - 6:.2f}">'
+            f"{value:.3g}</text>"
+        )
+    parts.append("</svg>")
     return "\n".join(parts)
 
 
@@ -529,6 +675,14 @@ tr:last-child td {
 .bar {
   fill: var(--accent);
 }
+.line-path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.line-point {
+  fill: var(--accent);
+}
 .axis {
   stroke: var(--line);
 }
@@ -537,6 +691,9 @@ tr:last-child td {
   fill: var(--ink);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+.mini {
+  font-size: 10px;
 }
 @media (max-width: 720px) {
   main {

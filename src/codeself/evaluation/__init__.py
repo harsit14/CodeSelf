@@ -13,6 +13,12 @@ from codeself.evaluation.dashboard import (
     render_evaluation_dashboard,
     write_evaluation_dashboard,
 )
+from codeself.evaluation.learning_curves import (
+    LearningCurvePoint,
+    LearningCurveRun,
+    collect_learning_curve,
+    collect_learning_curves,
+)
 from codeself.evaluation.pass_at_k import estimate_pass_at_k, mean_pass_at_k
 from codeself.evaluation.power_analysis import (
     PowerAnalysisResult,
@@ -41,6 +47,8 @@ __all__ = [
     "EffectSizeSummary",
     "EvaluationSummary",
     "GroupEvaluation",
+    "LearningCurvePoint",
+    "LearningCurveRun",
     "McNemarResult",
     "PairedPermutationResult",
     "PairedTaskOutcome",
@@ -50,6 +58,8 @@ __all__ = [
     "bootstrap_delta_ci",
     "compare_rollout_files",
     "compare_rollouts",
+    "collect_learning_curve",
+    "collect_learning_curves",
     "effect_size_summary",
     "estimate_pass_at_k",
     "exact_mcnemar",
