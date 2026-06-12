@@ -34,9 +34,13 @@ class SelfDebugRolloutConfig:
     top_p: float = 0.95
     include_hidden: bool = True
     use_rule_based_repair: bool = True
+    revision_strategy: str = "rule_based"
+    revision_prompt_template: str = "self_debug_revision_v1"
     revision_reward_discount: float = 1.0
 
     def __post_init__(self) -> None:
+        if self.revision_strategy not in {"rule_based", "model", "none"}:
+            raise ValueError("revision_strategy must be rule_based, model, or none")
         if self.max_revisions < 0:
             raise ValueError("max_revisions must be non-negative")
         if self.max_new_tokens <= 0:
@@ -55,7 +59,11 @@ class SelfDebugRolloutConfig:
             max_new_tokens=self.max_new_tokens,
             temperature=self.temperature,
             top_p=self.top_p,
-            use_rule_based_repair=self.use_rule_based_repair,
+            use_rule_based_repair=(
+                self.use_rule_based_repair and self.revision_strategy == "rule_based"
+            ),
+            use_model_revision=self.revision_strategy == "model",
+            revision_prompt_template=self.revision_prompt_template,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -67,6 +75,8 @@ class SelfDebugRolloutConfig:
             "top_p": self.top_p,
             "include_hidden": self.include_hidden,
             "use_rule_based_repair": self.use_rule_based_repair,
+            "revision_strategy": self.revision_strategy,
+            "revision_prompt_template": self.revision_prompt_template,
             "revision_reward_discount": self.revision_reward_discount,
         }
 
@@ -105,6 +115,8 @@ def generate_self_debug_rollouts(
     include_hidden: bool,
     max_revisions: int = 1,
     use_rule_based_repair: bool = True,
+    revision_strategy: str = "rule_based",
+    revision_prompt_template: str = "self_debug_revision_v1",
     revision_reward_discount: float = 1.0,
     scorer: RewardScorer | None = None,
     runner: SandboxedTestRunner | None = None,
@@ -114,6 +126,9 @@ def generate_self_debug_rollouts(
 
     if samples_per_task <= 0:
         raise ValueError("samples_per_task must be positive")
+    effective_revision_strategy = revision_strategy
+    if not use_rule_based_repair and revision_strategy == "rule_based":
+        effective_revision_strategy = "none"
     config = SelfDebugRolloutConfig(
         seed=seed,
         max_revisions=max_revisions,
@@ -122,6 +137,8 @@ def generate_self_debug_rollouts(
         top_p=top_p,
         include_hidden=include_hidden,
         use_rule_based_repair=use_rule_based_repair,
+        revision_strategy=effective_revision_strategy,
+        revision_prompt_template=revision_prompt_template,
         revision_reward_discount=revision_reward_discount,
     )
     toolbox = AgentToolbox(runner=runner, scorer=scorer)
@@ -198,6 +215,11 @@ def rollout_record_from_trace(
             "use_rule_based_repair": bool(
                 trace.metadata.get("use_rule_based_repair", True)
             ),
+            "use_model_revision": bool(trace.metadata.get("use_model_revision", False)),
+            "revision_strategy": _revision_strategy(trace),
+            "revision_prompt_template": str(
+                trace.metadata.get("revision_prompt_template", "")
+            ),
             "revision_count": trace.revision_count,
             "tool_call_count": trace.tool_call_count,
             "public_test_passed": _last_tool_ok(trace, "run_public_tests"),
@@ -242,6 +264,14 @@ def _last_tool_ok(trace: AgentTrace, kind: str) -> bool:
     if not steps:
         return False
     return bool(steps[-1].tool_result.get("ok"))
+
+
+def _revision_strategy(trace: AgentTrace) -> str:
+    if bool(trace.metadata.get("use_model_revision", False)):
+        return "model"
+    if bool(trace.metadata.get("use_rule_based_repair", True)):
+        return "rule_based"
+    return "none"
 
 
 def _scalar_metadata(

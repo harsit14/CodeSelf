@@ -62,6 +62,8 @@ def main() -> int:
     parser.add_argument("--public-only", action="store_true", help="Skip hidden tests.")
     parser.add_argument("--max-revisions", type=int)
     parser.add_argument("--disable-rule-repair", action="store_true", default=None)
+    parser.add_argument("--revision-strategy", choices=("rule_based", "model", "none"))
+    parser.add_argument("--revision-prompt-template")
     parser.add_argument("--revision-reward-discount", type=float)
     parser.add_argument(
         "--reward-mode",
@@ -203,6 +205,7 @@ def main() -> int:
     if rollout_mode == "direct":
         records = generate_rollouts(tasks, **generation_kwargs)
     elif rollout_mode == "self_debug":
+        revision_strategy = _revision_strategy(args, config)
         result = generate_self_debug_rollouts(
             tasks,
             **generation_kwargs,
@@ -213,11 +216,13 @@ def main() -> int:
                     default=config_get(config, "agent.max_revisions", 1),
                 )
             ),
-            use_rule_based_repair=bool(
+            use_rule_based_repair=revision_strategy == "rule_based",
+            revision_strategy=revision_strategy,
+            revision_prompt_template=str(
                 _value(
-                    False if args.disable_rule_repair else None,
-                    config_get(config, "self_debug.use_rule_based_repair"),
-                    default=config_get(config, "agent.use_rule_based_repair", True),
+                    args.revision_prompt_template,
+                    config_get(config, "self_debug.revision_prompt_template"),
+                    default="self_debug_revision_v1",
                 )
             ),
             revision_reward_discount=float(
@@ -286,6 +291,22 @@ def _value(cli_value: Any, config_value: Any, *, default: Any) -> Any:
     if config_value is not None:
         return config_value
     return default
+
+
+def _revision_strategy(args, config: dict[str, Any]) -> str:
+    if args.revision_strategy is not None:
+        return str(args.revision_strategy)
+    if args.disable_rule_repair:
+        return "none"
+    configured = config_get(config, "self_debug.revision_strategy")
+    if configured is not None:
+        return str(configured)
+    use_rule_based = config_get(
+        config,
+        "self_debug.use_rule_based_repair",
+        config_get(config, "agent.use_rule_based_repair", True),
+    )
+    return "rule_based" if bool(use_rule_based) else "none"
 
 
 def _print_quality_failures(quality) -> None:

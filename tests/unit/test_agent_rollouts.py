@@ -11,7 +11,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.agent import (  # noqa: E402
+    CodeGenerator,
     DIRECT_SOLUTION_TEMPLATE,
+    GenerationRequest,
+    GenerationResult,
     MockGenerator,
     StaticGenerator,
     extract_code,
@@ -136,6 +139,29 @@ class AgentRolloutTests(unittest.TestCase):
         self.assertEqual(record.metadata["revision_count"], 1)
         self.assertEqual(record.metadata["ablation"], "self_debug")
         self.assertEqual(result.analysis.final_pass_rate, 1.0)
+
+    def test_generate_self_debug_rollouts_can_use_model_revision(self) -> None:
+        result = generate_self_debug_rollouts(
+            [_task()],
+            generator=_TwoStageRevisionGenerator(),
+            prompt_template=DIRECT_SOLUTION_TEMPLATE,
+            samples_per_task=1,
+            seed=3,
+            max_new_tokens=128,
+            temperature=0.0,
+            top_p=1.0,
+            include_hidden=True,
+            max_revisions=1,
+            use_rule_based_repair=False,
+            revision_strategy="model",
+        )
+
+        record = result.records[0]
+
+        self.assertTrue(record.execution["passed"])
+        self.assertEqual(record.metadata["revision_strategy"], "model")
+        self.assertEqual(record.metadata["revision_count"], 1)
+        self.assertEqual(record.generation_metadata["stage"], "initial")
 
     def test_rollout_jsonl_round_trip(self) -> None:
         records = generate_rollouts(
@@ -363,6 +389,25 @@ class AgentRolloutTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 1)
         self.assertIn("dataset quality checks failed", completed.stdout)
         self.assertIn("contamination", completed.stdout)
+
+
+class _TwoStageRevisionGenerator(CodeGenerator):
+    backend_name = "unit"
+    model_name = "two-stage-revision"
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        if "Public-test feedback:" in request.prompt:
+            completion = "```python\ndef add_one(x):\n    return x + 1\n```"
+            stage = "revision"
+        else:
+            completion = "```python\ndef add_one(x):\n    return x\n```"
+            stage = "initial"
+        return GenerationResult(
+            text=completion,
+            backend=self.backend_name,
+            model_name=self.model_name,
+            metadata={"stage": stage},
+        )
 
 
 if __name__ == "__main__":

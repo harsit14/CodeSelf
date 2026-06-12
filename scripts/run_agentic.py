@@ -26,8 +26,18 @@ from codeself.datasets import Split, TaskRegistry  # noqa: E402
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tasks", type=Path, required=True, help="Canonical task JSONL file.")
-    parser.add_argument("--trace-output", type=Path, required=True, help="Output agent traces JSONL.")
-    parser.add_argument("--report-output", type=Path, required=True, help="Output strategy report .md/.json.")
+    parser.add_argument(
+        "--trace-output",
+        type=Path,
+        required=True,
+        help="Output agent traces JSONL.",
+    )
+    parser.add_argument(
+        "--report-output",
+        type=Path,
+        required=True,
+        help="Output strategy report .md/.json.",
+    )
     parser.add_argument("--backend", choices=("mock", "static", "transformers"), default="mock")
     parser.add_argument("--model")
     parser.add_argument("--static-completion-file", type=Path)
@@ -38,6 +48,8 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=20260601)
     parser.add_argument("--max-revisions", type=int, default=1)
     parser.add_argument("--disable-rule-repair", action="store_true")
+    parser.add_argument("--revision-strategy", choices=("rule_based", "model", "none"))
+    parser.add_argument("--revision-prompt-template", default="self_debug_revision_v1")
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--top-p", type=float, default=0.95)
@@ -69,7 +81,9 @@ def main() -> int:
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,
             top_p=args.top_p,
-            use_rule_based_repair=not args.disable_rule_repair,
+            use_rule_based_repair=_revision_strategy(args) == "rule_based",
+            use_model_revision=_revision_strategy(args) == "model",
+            revision_prompt_template=args.revision_prompt_template,
         ),
     )
     traces = run_agentic_tasks(tasks, loop=loop, sample_index=args.sample_index)
@@ -84,6 +98,12 @@ def main() -> int:
     print(f"revision_rate: {analysis.revision_rate:.4f}")
     print(f"mean_tool_calls: {analysis.mean_tool_calls:.4f}")
     return 0
+
+
+def _revision_strategy(args) -> str:
+    if args.revision_strategy is not None:
+        return str(args.revision_strategy)
+    return "none" if args.disable_rule_repair else "rule_based"
 
 
 if __name__ == "__main__":

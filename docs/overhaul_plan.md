@@ -711,11 +711,35 @@ First slice shipped:
   self-debug metadata, CLI trace output, and downstream GRPO/PPO rollout-cycle
   compatibility.
 
+Second slice shipped:
+
+- Added `RevisionPromptTemplate`, `SELF_DEBUG_REVISION_TEMPLATE`, and
+  `get_revision_prompt_template()` for versioned self-debug revision prompts.
+- The default revision prompt includes the task, required entry point, starter
+  code, public tests, current code, and public-test feedback while excluding
+  hidden tests.
+- `SelfDebugAgentLoop` can now use model-generated revisions by issuing a
+  second `GenerationRequest` with the structured revision prompt after a
+  public-test failure.
+- Revision trace steps now record `revision_source`, revision prompt template,
+  revision prompt text, raw revision completion, backend, model name, and
+  generation metadata.
+- `SelfDebugRolloutConfig` now records `revision_strategy` with `rule_based`,
+  `model`, and `none` options, while preserving the older
+  `use_rule_based_repair=False` behavior as no revision.
+- Extended `scripts/run_rollouts.py` and `scripts/run_agentic.py` with
+  `--revision-strategy` and `--revision-prompt-template`.
+- Added `rollout_self_debug_model_revision.example.yaml` as the first config
+  template for model-generated revision ablations.
+- Added tests for structured revision prompt contents, hidden-test exclusion,
+  model revision trace metadata, rollout metadata, and downstream rollout
+  compatibility.
+
 Remaining risks:
 
-- The revision policy is still rule-based for smoke testing. A model-generated
-  revision prompt that includes structured feedback is the next substantive
-  self-debug training slice.
+- Model revision uses the same generator backend and sampling settings as the
+  initial attempt. Later work should split initial and revision generation
+  configs for more precise ablations.
 - Current training loops still collect direct rollouts internally. They can
   consume self-debug rollout JSONL through the batch builders, but online GRPO
   and PPO need config switches before self-debug collection is native there.

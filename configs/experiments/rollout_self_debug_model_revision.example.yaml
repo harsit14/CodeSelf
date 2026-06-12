@@ -1,5 +1,5 @@
 experiment:
-  name: rollout_self_debug_ablation
+  name: rollout_self_debug_model_revision
   seed: 20260601
 
 data:
@@ -24,9 +24,8 @@ generation:
 
 self_debug:
   max_revisions: 1
-  revision_strategy: rule_based
+  revision_strategy: model
   revision_prompt_template: self_debug_revision_v1
-  use_rule_based_repair: true
   revision_reward_discount: 0.9
 
 execution:
@@ -36,5 +35,5 @@ reward:
   mode: correctness_v0
 
 output:
-  rollouts: outputs/rollouts/self_debug_ablation.jsonl
-  traces: outputs/reports/self_debug_ablation_traces.jsonl
+  rollouts: outputs/rollouts/self_debug_model_revision.jsonl
+  traces: outputs/reports/self_debug_model_revision_traces.jsonl

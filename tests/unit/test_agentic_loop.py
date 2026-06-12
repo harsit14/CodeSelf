@@ -12,6 +12,10 @@ sys.path.insert(0, str(ROOT / "src"))
 from codeself.agent import (  # noqa: E402
     DIRECT_SOLUTION_TEMPLATE,
     AgentLoopConfig,
+    CodeGenerator,
+    GenerationRequest,
+    GenerationResult,
+    SELF_DEBUG_REVISION_TEMPLATE,
     SelfDebugAgentLoop,
     StaticGenerator,
     analyze_traces,
@@ -67,6 +71,33 @@ class AgenticLoopTests(unittest.TestCase):
         self.assertFalse(trace.final_passed)
         self.assertEqual(trace.revision_count, 0)
 
+    def test_self_debug_loop_can_use_model_revision_prompt(self) -> None:
+        generator = _TwoStageRevisionGenerator()
+        loop = SelfDebugAgentLoop(
+            generator=generator,
+            prompt_template=DIRECT_SOLUTION_TEMPLATE,
+            config=AgentLoopConfig(
+                max_revisions=1,
+                use_rule_based_repair=False,
+                use_model_revision=True,
+            ),
+        )
+
+        trace = loop.run_task(_task())
+        revision_step = next(step for step in trace.steps if step.kind == "revision")
+
+        self.assertTrue(trace.final_passed)
+        self.assertEqual(trace.revision_count, 1)
+        self.assertEqual(revision_step.metadata["revision_source"], "model")
+        self.assertEqual(
+            revision_step.metadata["revision_prompt_template"],
+            SELF_DEBUG_REVISION_TEMPLATE.name,
+        )
+        self.assertIn("Public-test feedback:", revision_step.metadata["revision_prompt"])
+        self.assertIn("Current code:", revision_step.metadata["revision_prompt"])
+        self.assertNotIn("assert add_one(0) == 1", revision_step.metadata["revision_prompt"])
+        self.assertIn("return x + 1", trace.final_code)
+
     def test_trace_round_trip_and_analysis(self) -> None:
         loop = SelfDebugAgentLoop(
             generator=StaticGenerator("```python\ndef add_one(x):\n    return x\n```"),
@@ -94,7 +125,10 @@ class AgenticLoopTests(unittest.TestCase):
             report_path = Path(tmpdir) / "report.md"
             view_path = Path(tmpdir) / "trace.md"
             TaskRegistry([_task()]).to_jsonl(task_path)
-            completion_path.write_text("```python\ndef add_one(x):\n    return x\n```", encoding="utf-8")
+            completion_path.write_text(
+                "```python\ndef add_one(x):\n    return x\n```",
+                encoding="utf-8",
+            )
 
             run_completed = subprocess.run(
                 [
@@ -141,6 +175,25 @@ class AgenticLoopTests(unittest.TestCase):
         self.assertIn("final_pass_rate: 1.0000", run_completed.stdout)
         self.assertIn("Agentic Strategy Analysis", report)
         self.assertIn("Agent Trace", view)
+
+
+class _TwoStageRevisionGenerator(CodeGenerator):
+    backend_name = "unit"
+    model_name = "two-stage-revision"
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        if "Public-test feedback:" in request.prompt:
+            completion = "```python\ndef add_one(x):\n    return x + 1\n```"
+            stage = "revision"
+        else:
+            completion = "```python\ndef add_one(x):\n    return x\n```"
+            stage = "initial"
+        return GenerationResult(
+            text=completion,
+            backend=self.backend_name,
+            model_name=self.model_name,
+            metadata={"stage": stage},
+        )
 
 
 if __name__ == "__main__":

@@ -44,6 +44,61 @@ class PromptTemplate:
         return "\n".join(parts).strip() + "\n"
 
 
+@dataclass(frozen=True)
+class RevisionPromptTemplate:
+    """A versioned prompt template for self-debug revisions."""
+
+    name: str
+    include_public_tests: bool = True
+    require_code_fence: bool = True
+
+    def render(
+        self,
+        task: TaskSpec,
+        *,
+        current_code: str,
+        observation: str,
+        revision_index: int,
+    ) -> str:
+        parts = [
+            "You are revising a Python solution after public-test feedback.",
+            "Return a complete corrected solution, not a patch.",
+            "Do not mention the debugging process.",
+        ]
+        if self.require_code_fence:
+            parts.append("Wrap the revised code in a single ```python fenced block.")
+        parts.extend(
+            [
+                "",
+                f"Revision attempt: {revision_index}",
+                "",
+                "Task:",
+                task.prompt.strip(),
+            ]
+        )
+        if task.entry_point:
+            parts.extend(["", f"Required entry point: `{task.entry_point}`"])
+        if task.starter_code.strip():
+            parts.extend(["", "Starter code:", "```python", task.starter_code.strip(), "```"])
+        if self.include_public_tests and task.public_tests:
+            parts.extend(["", "Public tests:", "```python"])
+            parts.extend(test.code.strip() for test in task.public_tests)
+            parts.append("```")
+        parts.extend(
+            [
+                "",
+                "Current code:",
+                "```python",
+                current_code.strip(),
+                "```",
+                "",
+                "Public-test feedback:",
+                observation.strip() or "public tests failed",
+            ]
+        )
+        return "\n".join(parts).strip() + "\n"
+
+
 DIRECT_SOLUTION_TEMPLATE = PromptTemplate(
     name="direct_solution_v1",
     include_public_tests=False,
@@ -52,6 +107,12 @@ DIRECT_SOLUTION_TEMPLATE = PromptTemplate(
 
 DIRECT_WITH_PUBLIC_TESTS_TEMPLATE = PromptTemplate(
     name="direct_solution_with_public_tests_v1",
+    include_public_tests=True,
+    require_code_fence=True,
+)
+
+SELF_DEBUG_REVISION_TEMPLATE = RevisionPromptTemplate(
+    name="self_debug_revision_v1",
     include_public_tests=True,
     require_code_fence=True,
 )
@@ -67,3 +128,16 @@ def get_prompt_template(name: str) -> PromptTemplate:
     except KeyError as exc:
         available = ", ".join(sorted(templates))
         raise ValueError(f"unknown prompt template {name!r}; available: {available}") from exc
+
+
+def get_revision_prompt_template(name: str) -> RevisionPromptTemplate:
+    templates = {
+        SELF_DEBUG_REVISION_TEMPLATE.name: SELF_DEBUG_REVISION_TEMPLATE,
+    }
+    try:
+        return templates[name]
+    except KeyError as exc:
+        available = ", ".join(sorted(templates))
+        raise ValueError(
+            f"unknown revision prompt template {name!r}; available: {available}"
+        ) from exc

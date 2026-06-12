@@ -9,7 +9,7 @@ from typing import Any
 
 from codeself.agent.generation import CodeGenerator, GenerationRequest
 from codeself.agent.parser import ParsedCompletion, ParseStatus, extract_code
-from codeself.agent.prompts import PromptTemplate
+from codeself.agent.prompts import PromptTemplate, get_revision_prompt_template
 from codeself.agent.tools import AgentToolbox, ToolResult, infer_simple_revision
 from codeself.datasets import TaskSpec
 
@@ -24,10 +24,29 @@ class AgentLoopConfig:
     temperature: float = 0.8
     top_p: float = 0.95
     use_rule_based_repair: bool = True
+    use_model_revision: bool = False
+    revision_prompt_template: str = "self_debug_revision_v1"
 
     def __post_init__(self) -> None:
         if self.max_revisions < 0:
             raise ValueError("max_revisions must be non-negative")
+        if self.max_new_tokens <= 0:
+            raise ValueError("max_new_tokens must be positive")
+        if self.temperature < 0:
+            raise ValueError("temperature must be non-negative")
+        if not 0 < self.top_p <= 1:
+            raise ValueError("top_p must be in (0, 1]")
+        get_revision_prompt_template(self.revision_prompt_template)
+
+
+@dataclass(frozen=True)
+class _RevisionCandidate:
+    """One proposed self-debug revision."""
+
+    code: str
+    parsed_status: str
+    observation: str
+    metadata: dict[str, str | int | float | bool]
 
 
 @dataclass(frozen=True)
@@ -135,6 +154,9 @@ class SelfDebugAgentLoop:
         self.prompt_template = prompt_template
         self.toolbox = toolbox or AgentToolbox()
         self.config = config or AgentLoopConfig()
+        self.revision_prompt_template = get_revision_prompt_template(
+            self.config.revision_prompt_template
+        )
 
     def run_task(
         self,
@@ -180,20 +202,26 @@ class SelfDebugAgentLoop:
             if public_result.ok or revisions == self.config.max_revisions:
                 break
 
-            revised = self._revise(task, code, public_result.observation)
+            revision = self._revise(
+                task,
+                current_code=code,
+                observation=public_result.observation,
+                revision_index=revisions + 1,
+            )
             revisions += 1
+            revised = revision.code
             changed = revised != code
             code = revised
-            parsed_revision = _parse_revision(revised)
             steps.append(
                 AgentStep(
                     kind="revision",
                     code=code,
-                    parsed_status=parsed_revision.status.value,
-                    observation="revised after public-test feedback",
+                    parsed_status=revision.parsed_status,
+                    observation=revision.observation,
                     metadata={
                         "revision_index": revisions,
                         "changed": changed,
+                        **revision.metadata,
                     },
                 )
             )
@@ -217,13 +245,79 @@ class SelfDebugAgentLoop:
                 "include_hidden": include_hidden,
                 "max_revisions": self.config.max_revisions,
                 "use_rule_based_repair": self.config.use_rule_based_repair,
+                "use_model_revision": self.config.use_model_revision,
+                "revision_prompt_template": self.config.revision_prompt_template,
             },
         )
 
-    def _revise(self, task: TaskSpec, code: str, observation: str) -> str:
+    def _revise(
+        self,
+        task: TaskSpec,
+        *,
+        current_code: str,
+        observation: str,
+        revision_index: int,
+    ) -> _RevisionCandidate:
+        if self.config.use_model_revision:
+            return self._model_revision(task, current_code, observation, revision_index)
         if self.config.use_rule_based_repair:
-            return infer_simple_revision(task, code, observation)
-        return code
+            code = infer_simple_revision(task, current_code, observation)
+            parsed = _parse_revision(code)
+            return _RevisionCandidate(
+                code=code,
+                parsed_status=parsed.status.value,
+                observation="rule-based revision after public-test feedback",
+                metadata={"revision_source": "rule_based"},
+            )
+        parsed = _parse_revision(current_code)
+        return _RevisionCandidate(
+            code=current_code,
+            parsed_status=parsed.status.value,
+            observation="no revision strategy enabled",
+            metadata={"revision_source": "none"},
+        )
+
+    def _model_revision(
+        self,
+        task: TaskSpec,
+        current_code: str,
+        observation: str,
+        revision_index: int,
+    ) -> _RevisionCandidate:
+        prompt = self.revision_prompt_template.render(
+            task,
+            current_code=current_code,
+            observation=observation,
+            revision_index=revision_index,
+        )
+        generation = self.generator.generate(
+            GenerationRequest(
+                task_id=task.task_id,
+                prompt=prompt,
+                sample_index=revision_index,
+                seed=self.config.seed + revision_index,
+                max_new_tokens=self.config.max_new_tokens,
+                temperature=self.config.temperature,
+                top_p=self.config.top_p,
+                entry_point=task.entry_point,
+            )
+        )
+        parsed = extract_code(generation.text)
+        metadata: dict[str, str | int | float | bool] = {
+            "revision_source": "model",
+            "revision_prompt_template": self.revision_prompt_template.name,
+            "revision_prompt": prompt,
+            "raw_revision_completion": generation.text,
+            "backend": generation.backend,
+            "model_name": generation.model_name,
+            **generation.metadata,
+        }
+        return _RevisionCandidate(
+            code=parsed.code,
+            parsed_status=parsed.status.value,
+            observation="model revision after public-test feedback",
+            metadata=metadata,
+        )
 
 
 @dataclass(frozen=True)

@@ -26,7 +26,10 @@ from codeself.agent.prompts import (
     DIRECT_SOLUTION_TEMPLATE,
     DIRECT_WITH_PUBLIC_TESTS_TEMPLATE,
     PromptTemplate,
+    RevisionPromptTemplate,
+    SELF_DEBUG_REVISION_TEMPLATE,
     get_prompt_template,
+    get_revision_prompt_template,
 )
 from codeself.agent.rollouts import (
     RolloutRecord,
@@ -56,7 +59,9 @@ __all__ = [
     "ParsedCompletion",
     "ParseStatus",
     "PromptTemplate",
+    "RevisionPromptTemplate",
     "RolloutRecord",
+    "SELF_DEBUG_REVISION_TEMPLATE",
     "SelfDebugAgentLoop",
     "SelfDebugRolloutConfig",
     "SelfDebugRolloutResult",
@@ -70,6 +75,7 @@ __all__ = [
     "generate_rollouts",
     "generate_self_debug_rollouts",
     "get_prompt_template",
+    "get_revision_prompt_template",
     "infer_simple_revision",
     "make_generator",
     "read_agent_traces_jsonl",
