@@ -584,7 +584,7 @@ Phase 6 completion note:
 
 ## Phase 7: Evaluation, Statistics, And Dashboard
 
-Status: pending
+Status: started
 
 Goals:
 
@@ -594,6 +594,31 @@ Goals:
   output fraction.
 - Build a local dashboard or plotting scripts for learning curves, win/loss
   tables, and rollout browsing.
+
+First slice shipped:
+
+- Expanded `evaluate_rollouts()` with an optional `max_samples_per_task` control
+  so reports can compare fixed rollout budgets without rewriting JSONL files.
+- Added per-task pass@k dictionaries, degenerate-output counts/rates, and
+  response-token means to `TaskEvaluation`.
+- Added aggregate reward standard deviation, degenerate-output rate, response
+  token mean/median/max, and dashboard-ready `GroupEvaluation` records to
+  `EvaluationSummary`.
+- Added metadata/field-based group summaries through `group_by`, supporting
+  fields such as `metadata.difficulty`, `metadata.split`, or `reward.reward_name`.
+- Updated `scripts/evaluate_rollouts.py` with `--max-samples-per-task` and
+  `--group-by`, plus console output for degenerate rate, response length, and
+  group pass@1.
+- Added tests for capped sample budgets, group summaries, per-task pass@k,
+  response-token statistics, degenerate-output detection, and CLI reporting.
+
+Remaining risks:
+
+- Degenerate-output detection is intentionally heuristic; it flags empty outputs
+  and obvious repetition, but richer task-aware failure tagging still belongs in
+  later dashboard work.
+- The first Phase 7 slice improves report payloads but does not yet add paired
+  permutation tests, effect sizes, or plotting/dashboard files.
 
 ## Phase 8: Self-Debug Training Mode
 

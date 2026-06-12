@@ -2,6 +2,7 @@
 
 from codeself.evaluation.evaluate import (
     EvaluationSummary,
+    GroupEvaluation,
     TaskEvaluation,
     evaluate_rollout_file,
     evaluate_rollouts,
@@ -29,6 +30,7 @@ __all__ = [
     "BootstrapCI",
     "ComparisonSummary",
     "EvaluationSummary",
+    "GroupEvaluation",
     "McNemarResult",
     "PairedTaskOutcome",
     "PowerAnalysisResult",
