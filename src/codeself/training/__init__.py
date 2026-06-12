@@ -129,6 +129,11 @@ from codeself.training.smoke.ppo import (
     PPOStepMetrics,
     summarize_ppo_step,
 )
+from codeself.training.ppo_cycle import (
+    PPORolloutTrainingCycleConfig,
+    PPORolloutTrainingCycleResult,
+    run_ppo_rollout_training_cycle,
+)
 from codeself.training.ppo_loss import (
     PPOLossConfig,
     PPOLossResult,
@@ -162,6 +167,11 @@ from codeself.training.ppo_step import (
     PPOOptimizerStepConfig,
     PPOOptimizerStepResult,
     run_ppo_optimizer_step,
+)
+from codeself.training.ppo_rollouts import (
+    PPORolloutBatchConfig,
+    PPORolloutBatchResult,
+    build_ppo_training_batch_from_rollouts,
 )
 from codeself.training.ppo_trainer import (
     PPOCheckpointArtifact,
@@ -217,6 +227,10 @@ __all__ = [
     "PPOLossResult",
     "PPOModelTrainingConfig",
     "PPOModelTrainingResult",
+    "PPORolloutBatchConfig",
+    "PPORolloutBatchResult",
+    "PPORolloutTrainingCycleConfig",
+    "PPORolloutTrainingCycleResult",
     "PPOSampleLoss",
     "PPOSmokeConfig",
     "PPOSmokeResult",
@@ -263,6 +277,7 @@ __all__ = [
     "build_grpo_training_batch_from_rollouts",
     "build_ppo_tensor_batch",
     "build_ppo_tensor_batch_from_model",
+    "build_ppo_training_batch_from_rollouts",
     "build_prompt_response_mask",
     "build_grpo_experiment_matrix",
     "build_training_core_config",
@@ -292,6 +307,7 @@ __all__ = [
     "run_grpo_training_loop",
     "run_ppo_model_training",
     "run_ppo_optimizer_step",
+    "run_ppo_rollout_training_cycle",
     "run_ppo_training_loop",
     "select_best_run",
     "summarize_grpo_step",

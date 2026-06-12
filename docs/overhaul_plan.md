@@ -528,12 +528,33 @@ Sixth slice shipped:
   `save_pretrained()` artifacts, config validation, and missing trainable
   parameter failures.
 
+Seventh slice shipped:
+
+- Added a rollout-to-PPO batch bridge that converts `RolloutRecord` objects into
+  tokenized `TrainingBatch` samples without assigning GRPO-style group
+  advantages.
+- Added `PPORolloutBatchConfig` and `PPORolloutBatchResult` with the same
+  prompt/response token limits, response-source selection, parse-failure
+  handling, skip diagnostics, and metadata carry-through used by the GRPO
+  bridge.
+- Added `run_ppo_rollout_training_cycle()` as the first collect -> batch ->
+  optimize orchestration layer for PPO.
+- Added `PPORolloutTrainingCycleConfig` and
+  `PPORolloutTrainingCycleResult` to bind sampling settings, rollout batch
+  settings, hidden-test inclusion, seed, and model-training settings in one
+  object.
+- The cycle writes optional rollout JSONL, metric JSONL, checkpoint manifest,
+  and Torch state artifacts while calling the model-aware PPO trainer.
+- Added dependency-free rollout-batch tests and a Torch-backed cycle test that
+  collects rollouts, trains the integrated policy/value toy model, writes
+  artifacts, and verifies policy and value updates.
+
 Remaining risks:
 
 - PPO now has dependency-free and Torch objective implementations, an optimizer
   step, model/value-head tensor wiring, a tensor training loop, and a
-  model-aware trainer; it still needs rollout cycle and online trainer parity
-  with the completed GRPO path.
+  model-aware trainer plus a one-cycle rollout trainer; it still needs repeated
+  online trainer parity with the completed GRPO path.
 - Rollout budget and dev-evaluation parity with GRPO should be enforced once the
   PPO online trainer exists.
 
