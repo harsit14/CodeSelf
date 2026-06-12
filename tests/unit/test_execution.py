@@ -16,6 +16,7 @@ from codeself.execution import (
     SandboxedTestRunner,
     SubprocessSandboxRunner,
 )
+from codeself.execution.harness import phase_sentinel
 
 
 def _task(
@@ -179,13 +180,17 @@ class DockerSandboxRunnerTests(unittest.TestCase):
     def test_docker_runner_can_execute_with_injected_command_runner(self) -> None:
         calls = []
 
-        def fake_runner(command: list[str], timeout_seconds: float):
-            calls.append((command, timeout_seconds))
+        def fake_runner(command: list[str], timeout_seconds: float, stdin_payload: str):
+            calls.append((command, timeout_seconds, stdin_payload))
             mount = next(item for item in command if item.startswith("type=bind,source="))
             source = mount.split("source=", 1)[1].split(",target=", 1)[0]
             self.assertTrue((Path(source) / "candidate.py").exists())
             self.assertTrue((Path(source) / "run_phase.py").exists())
-            return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+            self.assertNotIn("assert add_one(1) == 2", (Path(source) / "run_phase.py").read_text())
+            nonce = stdin_payload.split("\n", 1)[0]
+            return subprocess.CompletedProcess(
+                command, 0, stdout="ok" + phase_sentinel(nonce), stderr=""
+            )
 
         limits = ResourceLimits(timeout_seconds=1.5, memory_mb=128)
         result = DockerSandboxRunner(command_runner=fake_runner).run_phase(
@@ -201,7 +206,7 @@ class DockerSandboxRunnerTests(unittest.TestCase):
         self.assertEqual(calls[0][1], limits.timeout_seconds)
 
     def test_docker_runner_reports_missing_docker_as_runtime_error(self) -> None:
-        def missing_runner(command: list[str], timeout_seconds: float):
+        def missing_runner(command: list[str], timeout_seconds: float, stdin_payload: str):
             raise FileNotFoundError("docker")
 
         result = DockerSandboxRunner(command_runner=missing_runner).run_phase(

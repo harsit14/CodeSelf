@@ -1,8 +1,18 @@
 """Static safety checks for generated Python code.
 
-The scan is intentionally conservative. It is not a substitute for runtime
-isolation, but it rejects obvious file, process, and network behavior before
-the executor spends resources on a candidate.
+The scan is intentionally conservative about *dangerous* surfaces while
+staying permissive about ordinary Python. It is one layer of three:
+
+1. this static scan rejects obvious escape attempts before execution;
+2. runtime startup hardening (``sitecustomize``) blocks file/network/exit
+   surfaces inside the child process;
+3. the subprocess jail enforces rlimits, process-group kill, and a
+   completion sentinel so a forced clean exit cannot fake a pass.
+
+Importantly, the scan must not reject idiomatic solution code. Generic
+method names such as ``str.replace`` or ``list.remove`` and reflective
+builtins such as ``getattr``/``hasattr`` are allowed; only dunder-level
+introspection escapes and dangerous module imports are blocked.
 """
 
 from __future__ import annotations
@@ -14,75 +24,90 @@ from codeself.execution.results import SecurityFinding
 
 
 BLOCKED_MODULES = {
-    "asyncio.subprocess",
+    "_io",
+    "_posixsubprocess",
+    "_socket",
+    "_thread",
+    "asyncio",
+    "builtins",
+    "codecs",
     "ctypes",
+    "faulthandler",
+    "fcntl",
     "ftplib",
+    "gc",
     "glob",
     "http",
-    "http.client",
     "importlib",
+    "inspect",
+    "io",
+    "marshal",
+    "mmap",
     "multiprocessing",
     "os",
     "pathlib",
     "pickle",
+    "pty",
     "requests",
+    "resource",
     "shutil",
     "signal",
     "socket",
     "subprocess",
     "sys",
     "tempfile",
+    "traceback",
     "urllib",
-    "urllib.request",
+    "webbrowser",
 }
 
 BLOCKED_CALLS = {
+    "SystemExit",
     "__import__",
     "breakpoint",
     "compile",
     "eval",
     "exec",
     "exit",
-    "delattr",
-    "getattr",
     "globals",
-    "hasattr",
     "input",
     "locals",
     "open",
     "quit",
-    "setattr",
-    "SystemExit",
     "vars",
 }
 
+# Reflective builtins are allowed in general, but not when used to reach a
+# blocked dunder attribute through a string literal.
+REFLECTIVE_CALLS = {"delattr", "getattr", "hasattr", "setattr"}
+
 BLOCKED_ATTRIBUTES = {
+    "__base__",
+    "__bases__",
     "__builtins__",
     "__class__",
-    "__code__",
     "__closure__",
+    "__code__",
     "__dict__",
     "__getattribute__",
     "__globals__",
+    "__import__",
+    "__loader__",
     "__mro__",
+    "__reduce__",
+    "__reduce_ex__",
+    "__self__",
+    "__spec__",
     "__subclasses__",
-    "connect",
-    "kill",
+    "ag_frame",
+    "cr_frame",
+    "f_back",
+    "f_builtins",
+    "f_globals",
+    "f_locals",
+    "gi_frame",
     "mro",
-    "mkdir",
-    "open",
-    "popen",
-    "read",
-    "read_text",
-    "remove",
-    "rename",
-    "replace",
-    "rmdir",
-    "socket",
-    "spawn",
-    "system",
-    "unlink",
-    "write",
+    "tb_frame",
 }
 
 BLOCKED_RAISES = {
@@ -140,9 +165,15 @@ class _SecurityVisitor(ast.NodeVisitor):
         name = _call_name(node.func)
         if name in BLOCKED_CALLS:
             self._add("blocked_call", f"blocked call: {name}", node.lineno)
-        attribute = _attribute_name(node.func)
-        if attribute in BLOCKED_ATTRIBUTES:
-            self._add("blocked_attribute", f"blocked attribute call: {attribute}", node.lineno)
+        if name in REFLECTIVE_CALLS:
+            for argument in node.args:
+                literal = _string_literal(argument)
+                if literal in BLOCKED_ATTRIBUTES:
+                    self._add(
+                        "blocked_reflection",
+                        f"blocked reflective access: {name}(..., {literal!r})",
+                        node.lineno,
+                    )
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:  # noqa: N802
@@ -168,6 +199,12 @@ def _module_blocked(module: str) -> bool:
 def _call_name(node: ast.AST) -> str | None:
     if isinstance(node, ast.Name):
         return node.id
+    return None
+
+
+def _string_literal(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
     return None
 
 

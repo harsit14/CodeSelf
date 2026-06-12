@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import subprocess
 import tempfile
 import time
@@ -10,11 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from codeself.datasets import ResourceLimits
-from codeself.execution.harness import write_phase_files
+from codeself.execution.harness import phase_sentinel, phase_stdin_payload, write_phase_files
 from codeself.execution.results import PhaseResult, PhaseStatus
 
 
-CommandRunner = Callable[[list[str], float], subprocess.CompletedProcess[str]]
+CommandRunner = Callable[[list[str], float, str], subprocess.CompletedProcess[str]]
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,7 @@ class DockerSandboxRunner:
             self.config.docker_executable,
             "run",
             "--rm",
+            "--interactive",
             "--network",
             "none",
             "--read-only",
@@ -94,11 +96,17 @@ class DockerSandboxRunner:
 
         with tempfile.TemporaryDirectory(prefix="codeself-docker-run-") as tmpdir:
             temp_path = Path(tmpdir)
-            write_phase_files(temp_path, candidate_code=candidate_code, phase_code=phase_code)
+            write_phase_files(temp_path, candidate_code=candidate_code)
+            nonce = secrets.token_hex(16)
+            sentinel = phase_sentinel(nonce)
             command = self.build_command(temp_path, limits)
             start = time.monotonic()
             try:
-                completed = self._command_runner(command, limits.timeout_seconds)
+                completed = self._command_runner(
+                    command,
+                    limits.timeout_seconds,
+                    phase_stdin_payload(nonce, phase_code),
+                )
             except subprocess.TimeoutExpired as exc:
                 duration = time.monotonic() - start
                 return PhaseResult(
@@ -121,9 +129,20 @@ class DockerSandboxRunner:
                 )
 
             duration = time.monotonic() - start
-            stdout = _truncate(completed.stdout, self.config.max_output_chars)
+            sentinel_present = sentinel in (completed.stdout or "")
+            stdout = _truncate(
+                (completed.stdout or "").replace(sentinel, ""), self.config.max_output_chars
+            )
             stderr = _truncate(completed.stderr, self.config.max_output_chars)
-            status = PhaseStatus.PASSED if completed.returncode == 0 else PhaseStatus.FAILED
+            if completed.returncode == 0 and sentinel_present:
+                status = PhaseStatus.PASSED
+                error = ""
+            elif completed.returncode == 0:
+                status = PhaseStatus.RUNTIME_ERROR
+                error = "phase exited cleanly without completing the harness (possible forced exit)"
+            else:
+                status = PhaseStatus.FAILED
+                error = _last_line(stderr)
             return PhaseResult(
                 name=phase_name,
                 status=status,
@@ -131,7 +150,7 @@ class DockerSandboxRunner:
                 exit_code=completed.returncode,
                 stdout=stdout,
                 stderr=stderr,
-                error="" if status == PhaseStatus.PASSED else _last_line(stderr),
+                error=error,
                 tests_run=tests_run,
             )
 
@@ -139,9 +158,11 @@ class DockerSandboxRunner:
 def _default_command_runner(
     command: list[str],
     timeout_seconds: float,
+    stdin_payload: str,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
+        input=stdin_payload,
         capture_output=True,
         text=True,
         timeout=timeout_seconds,

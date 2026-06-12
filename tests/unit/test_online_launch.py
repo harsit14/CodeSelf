@@ -21,8 +21,10 @@ from codeself.training import (  # noqa: E402
     run_online_training_from_config,
 )
 import codeself.training.online_launch as online_launch_module  # noqa: E402
+from codeself.training import torch_training_available  # noqa: E402
 
 
+@unittest.skipUnless(torch_training_available(), "Torch is an optional training dependency")
 class OnlineTrainingLaunchTests(unittest.TestCase):
     def test_runs_grpo_online_training_from_single_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
