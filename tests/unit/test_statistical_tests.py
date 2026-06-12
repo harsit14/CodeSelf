@@ -9,13 +9,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from codeself.agent import DIRECT_SOLUTION_TEMPLATE, StaticGenerator, generate_rollouts, write_rollouts_jsonl  # noqa: E402
+from codeself.agent import (  # noqa: E402
+    DIRECT_SOLUTION_TEMPLATE,
+    StaticGenerator,
+    generate_rollouts,
+    write_rollouts_jsonl,
+)
 from codeself.datasets import Split, TaskSpec, TestSpec  # noqa: E402
 from codeself.evaluation import (  # noqa: E402
     bootstrap_delta_ci,
     compare_rollouts,
+    effect_size_summary,
     exact_mcnemar,
     paired_task_outcomes,
+    paired_permutation_test,
 )
 
 
@@ -76,13 +83,49 @@ class StatisticalTests(unittest.TestCase):
         base = _rollouts(task_ids, passing={"task/a"})
         candidate = _rollouts(task_ids, passing={"task/a", "task/b", "task/c"})
 
-        summary = compare_rollouts(base, candidate, bootstrap_samples=200, seed=1)
+        summary = compare_rollouts(
+            base,
+            candidate,
+            bootstrap_samples=200,
+            permutation_samples=200,
+            seed=1,
+        )
 
         self.assertEqual(summary.task_count, 4)
         self.assertAlmostEqual(summary.base_pass_rate, 0.25)
         self.assertAlmostEqual(summary.candidate_pass_rate, 0.75)
         self.assertAlmostEqual(summary.delta_pp, 50.0)
+        self.assertAlmostEqual(summary.permutation.p_value, 0.5)
+        self.assertTrue(summary.permutation.exact)
+        self.assertAlmostEqual(summary.effect_size.relative_pass_rate_lift or 0.0, 2.0)
+        self.assertAlmostEqual(
+            summary.effect_size.relative_error_reduction or 0.0,
+            2 / 3,
+        )
+        self.assertIn("permutation", summary.to_dict())
+        self.assertIn("effect_size", summary.to_dict())
         self.assertGreaterEqual(summary.bootstrap_delta.upper, summary.bootstrap_delta.lower)
+
+    def test_paired_permutation_and_effect_size_validate_inputs(self) -> None:
+        task_ids = ["task/a", "task/b", "task/c", "task/d"]
+        base = _rollouts(task_ids, passing={"task/a", "task/b"})
+        candidate = _rollouts(task_ids, passing={"task/a", "task/c"})
+        outcomes = paired_task_outcomes(base, candidate)
+
+        permutation = paired_permutation_test(outcomes, samples=100, seed=1)
+        effect_size = effect_size_summary(outcomes)
+
+        self.assertAlmostEqual(permutation.observed_delta, 0.0)
+        self.assertAlmostEqual(permutation.p_value, 1.0)
+        self.assertTrue(permutation.exact)
+        self.assertAlmostEqual(effect_size.pass_rate_delta, 0.0)
+        self.assertAlmostEqual(effect_size.reward_delta, 0.0)
+        with self.assertRaises(ValueError):
+            paired_permutation_test([])
+        with self.assertRaises(ValueError):
+            paired_permutation_test(outcomes, samples=0)
+        with self.assertRaises(ValueError):
+            effect_size_summary([])
 
     def test_bootstrap_requires_outcomes(self) -> None:
         with self.assertRaises(ValueError):
@@ -111,6 +154,8 @@ class StatisticalTests(unittest.TestCase):
                     str(output_path),
                     "--bootstrap-samples",
                     "100",
+                    "--permutation-samples",
+                    "100",
                 ],
                 cwd=ROOT,
                 capture_output=True,
@@ -123,6 +168,8 @@ class StatisticalTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("Final Paired Evaluation Report", report)
         self.assertIn("mcnemar_p_value", completed.stdout)
+        self.assertIn("permutation_p_value", completed.stdout)
+        self.assertIn("Relative pass-rate lift", report)
 
 
 if __name__ == "__main__":

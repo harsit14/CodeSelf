@@ -612,13 +612,30 @@ First slice shipped:
 - Added tests for capped sample budgets, group summaries, per-task pass@k,
   response-token statistics, degenerate-output detection, and CLI reporting.
 
+Second slice shipped:
+
+- Added `PairedPermutationResult` and `paired_permutation_test()` for paired
+  sign-flip permutation testing over task-level pass/fail deltas.
+- The permutation test enumerates all sign flips exactly for small discordant
+  task sets and uses seeded Monte Carlo sampling for larger comparisons.
+- Added `EffectSizeSummary` and `effect_size_summary()` with pass-rate delta,
+  percentage-point delta, relative pass-rate lift, base/candidate error rates,
+  relative error reduction, reward delta, paired reward-delta standard
+  deviation, and standardized reward delta.
+- `ComparisonSummary` now includes exact McNemar, paired permutation,
+  bootstrap CI, and effect-size payloads in both JSON and Markdown reports.
+- Updated `scripts/compare_rollouts.py` with `--permutation-samples` and
+  console output for permutation p-values and effect sizes.
+- Added tests for exact permutation behavior, effect-size calculations, report
+  serialization, CLI output, and validation errors.
+
 Remaining risks:
 
 - Degenerate-output detection is intentionally heuristic; it flags empty outputs
   and obvious repetition, but richer task-aware failure tagging still belongs in
   later dashboard work.
-- The first Phase 7 slice improves report payloads but does not yet add paired
-  permutation tests, effect sizes, or plotting/dashboard files.
+- Phase 7 now has richer paired statistics, but plotting/dashboard files and
+  rollout browsing are still pending.
 
 ## Phase 8: Self-Debug Training Mode
 

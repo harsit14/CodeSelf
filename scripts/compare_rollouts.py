@@ -20,6 +20,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True, help="Output .md or .json report.")
     parser.add_argument("--sample-index", type=int, default=0)
     parser.add_argument("--bootstrap-samples", type=int, default=2000)
+    parser.add_argument("--permutation-samples", type=int, default=10000)
     parser.add_argument("--seed", type=int, default=20260601)
     parser.add_argument("--confidence", type=float, default=0.95)
     args = parser.parse_args()
@@ -29,6 +30,7 @@ def main() -> int:
         args.candidate_rollouts,
         sample_index=args.sample_index,
         bootstrap_samples=args.bootstrap_samples,
+        permutation_samples=args.permutation_samples,
         seed=args.seed,
         confidence=args.confidence,
     )
@@ -39,6 +41,9 @@ def main() -> int:
     print(f"candidate_pass@1: {summary.candidate_pass_rate:.4f}")
     print(f"delta_pp: {summary.delta_pp:.2f}")
     print(f"mcnemar_p_value: {summary.mcnemar.p_value:.6f}")
+    print(f"permutation_p_value: {summary.permutation.p_value:.6f}")
+    print(f"relative_pass_rate_lift: {summary.effect_size.relative_pass_rate_lift}")
+    print(f"relative_error_reduction: {summary.effect_size.relative_error_reduction}")
     print(
         "bootstrap_delta_ci_pp: "
         f"[{summary.bootstrap_delta.lower * 100:.2f}, {summary.bootstrap_delta.upper * 100:.2f}]"
