@@ -629,13 +629,29 @@ Second slice shipped:
 - Added tests for exact permutation behavior, effect-size calculations, report
   serialization, CLI output, and validation errors.
 
+Third slice shipped:
+
+- Added a dependency-free static HTML dashboard renderer for evaluation and
+  paired-comparison JSON reports.
+- Added `render_evaluation_dashboard()`, `write_evaluation_dashboard()`, and
+  `read_dashboard_json()` for programmatic dashboard generation.
+- Added `scripts/render_evaluation_dashboard.py` with repeated `--evaluation`
+  and `--comparison` inputs, labeled report paths, custom titles, and portable
+  HTML output.
+- The dashboard includes evaluation summary tables, inline SVG pass@1 and delta
+  charts, grouped metrics, per-task browsing tables, paired-comparison tables,
+  bootstrap CI columns, permutation p-values, and task-flip tables.
+- Added tests for Python rendering, HTML escaping, evaluation/comparison
+  sections, inline charts, CLI generation, and report counts.
+
 Remaining risks:
 
 - Degenerate-output detection is intentionally heuristic; it flags empty outputs
   and obvious repetition, but richer task-aware failure tagging still belongs in
   later dashboard work.
-- Phase 7 now has richer paired statistics, but plotting/dashboard files and
-  rollout browsing are still pending.
+- Phase 7 now has static dashboard generation, but it still needs learning-curve
+  aggregation from multi-cycle training artifact directories and richer raw
+  rollout browsing.
 
 ## Phase 8: Self-Debug Training Mode
 

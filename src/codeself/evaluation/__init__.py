@@ -8,6 +8,11 @@ from codeself.evaluation.evaluate import (
     evaluate_rollouts,
     write_evaluation_report,
 )
+from codeself.evaluation.dashboard import (
+    read_dashboard_json,
+    render_evaluation_dashboard,
+    write_evaluation_dashboard,
+)
 from codeself.evaluation.pass_at_k import estimate_pass_at_k, mean_pass_at_k
 from codeself.evaluation.power_analysis import (
     PowerAnalysisResult,
@@ -53,6 +58,9 @@ __all__ = [
     "mean_pass_at_k",
     "paired_task_outcomes",
     "paired_permutation_test",
+    "read_dashboard_json",
+    "render_evaluation_dashboard",
     "write_comparison_report",
+    "write_evaluation_dashboard",
     "write_evaluation_report",
 ]
