@@ -8,7 +8,7 @@ from typing import Any
 
 from codeself.datasets import TaskSpec, TestSpec
 from codeself.execution import SandboxedTestRunner
-from codeself.rewards import CompositeRewardScorer
+from codeself.rewards import CompositeRewardScorer, RewardScorer
 
 
 @dataclass(frozen=True)
@@ -46,9 +46,13 @@ class ToolResult:
 class AgentToolbox:
     """Public-test and final-submit tools for a coding task."""
 
-    def __init__(self, runner: SandboxedTestRunner | None = None) -> None:
+    def __init__(
+        self,
+        runner: SandboxedTestRunner | None = None,
+        scorer: RewardScorer | None = None,
+    ) -> None:
         self.runner = runner or SandboxedTestRunner()
-        self.scorer = CompositeRewardScorer()
+        self.scorer = scorer or CompositeRewardScorer()
 
     def run_public_tests(self, task: TaskSpec, code: str) -> ToolResult:
         call = ToolCall("run_public_tests", {"task_id": task.task_id})
@@ -65,7 +69,12 @@ class AgentToolbox:
             },
         )
 
-    def run_custom_tests(self, task: TaskSpec, code: str, tests: tuple[TestSpec, ...]) -> ToolResult:
+    def run_custom_tests(
+        self,
+        task: TaskSpec,
+        code: str,
+        tests: tuple[TestSpec, ...],
+    ) -> ToolResult:
         custom_task = TaskSpec(
             task_id=task.task_id,
             source=task.source,
@@ -91,9 +100,15 @@ class AgentToolbox:
             },
         )
 
-    def submit_final(self, task: TaskSpec, code: str) -> ToolResult:
+    def submit_final(
+        self,
+        task: TaskSpec,
+        code: str,
+        *,
+        include_hidden: bool = True,
+    ) -> ToolResult:
         call = ToolCall("submit_final", {"task_id": task.task_id})
-        result = self.runner.run(task, code, include_hidden=True)
+        result = self.runner.run(task, code, include_hidden=include_hidden)
         reward = self.scorer.score(result, solution_code=code)
         return ToolResult(
             call=call,

@@ -13,9 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.agent import (  # noqa: E402
+    generate_self_debug_rollouts,
     generate_rollouts,
     get_prompt_template,
     make_generator,
+    write_agent_traces_jsonl,
     write_rollouts_jsonl,
 )
 from codeself.config import config_get, load_config_file  # noqa: E402
@@ -25,14 +27,32 @@ from codeself.rewards import make_reward_scorer_from_mode  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, help="Optional JSON/simple-YAML rollout config.")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="Optional JSON/simple-YAML rollout config.",
+    )
     parser.add_argument("--tasks", type=Path, help="Canonical task JSONL file.")
     parser.add_argument("--output", type=Path, help="Output rollout JSONL file.")
+    parser.add_argument("--rollout-mode", choices=("direct", "self_debug"))
+    parser.add_argument(
+        "--trace-output",
+        type=Path,
+        help="Optional self-debug trace JSONL output.",
+    )
     parser.add_argument("--backend", choices=("mock", "static", "transformers"))
     parser.add_argument("--model", help="Local model path/name for transformers backend.")
-    parser.add_argument("--static-completion-file", type=Path, help="Completion file for static backend.")
+    parser.add_argument(
+        "--static-completion-file",
+        type=Path,
+        help="Completion file for static backend.",
+    )
     parser.add_argument("--prompt-template")
-    parser.add_argument("--split", choices=[split.value for split in Split], help="Optional split filter.")
+    parser.add_argument(
+        "--split",
+        choices=[split.value for split in Split],
+        help="Optional split filter.",
+    )
     parser.add_argument("--limit", type=int, help="Optional task limit after split filtering.")
     parser.add_argument("--samples-per-task", type=int)
     parser.add_argument("--seed", type=int)
@@ -40,9 +60,17 @@ def main() -> int:
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--top-p", type=float)
     parser.add_argument("--public-only", action="store_true", help="Skip hidden tests.")
+    parser.add_argument("--max-revisions", type=int)
+    parser.add_argument("--disable-rule-repair", action="store_true", default=None)
+    parser.add_argument("--revision-reward-discount", type=float)
     parser.add_argument(
         "--reward-mode",
-        choices=("correctness_v0", "binary_all_tests_pass", "fractional_pass_rate", "partial_credit"),
+        choices=(
+            "correctness_v0",
+            "binary_all_tests_pass",
+            "fractional_pass_rate",
+            "partial_credit",
+        ),
         help="Reward mode for rollout scoring.",
     )
     parser.add_argument("--compile-success-bonus", type=float)
@@ -104,10 +132,19 @@ def main() -> int:
         static_completion=static_completion,
     )
     prompt_template_name = str(
-        _value(args.prompt_template, config_get(config, "prompt.template"), default="direct_solution_v1")
+        _value(
+            args.prompt_template,
+            config_get(config, "prompt.template"),
+            default="direct_solution_v1",
+        )
     )
     prompt_template = get_prompt_template(prompt_template_name)
-    reward_mode = str(_value(args.reward_mode, config_get(config, "reward.mode"), default="correctness_v0"))
+    rollout_mode = str(
+        _value(args.rollout_mode, config_get(config, "rollout.mode"), default="direct")
+    )
+    reward_mode = str(
+        _value(args.reward_mode, config_get(config, "reward.mode"), default="correctness_v0")
+    )
     scorer = _make_scorer(
         reward_mode,
         compile_success_bonus=float(
@@ -133,29 +170,78 @@ def main() -> int:
         )
     )
     seed = int(_value(args.seed, config_get(config, "experiment.seed"), default=20260601))
-    records = generate_rollouts(
-        tasks,
-        generator=generator,
-        prompt_template=prompt_template,
-        samples_per_task=int(
-            _value(args.samples_per_task, config_get(config, "generation.samples_per_task"), default=1)
+    samples_per_task = int(
+        _value(
+            args.samples_per_task,
+            config_get(config, "generation.samples_per_task"),
+            default=1,
+        )
+    )
+    generation_kwargs = {
+        "generator": generator,
+        "prompt_template": prompt_template,
+        "samples_per_task": samples_per_task,
+        "seed": seed,
+        "max_new_tokens": int(
+            _value(
+                args.max_new_tokens,
+                config_get(config, "generation.max_new_tokens"),
+                default=512,
+            )
         ),
-        seed=seed,
-        max_new_tokens=int(
-            _value(args.max_new_tokens, config_get(config, "generation.max_new_tokens"), default=512)
-        ),
-        temperature=float(
+        "temperature": float(
             _value(args.temperature, config_get(config, "generation.temperature"), default=0.8)
         ),
-        top_p=float(_value(args.top_p, config_get(config, "generation.top_p"), default=0.95)),
-        include_hidden=include_hidden,
-        scorer=scorer,
-        metadata={
+        "top_p": float(_value(args.top_p, config_get(config, "generation.top_p"), default=0.95)),
+        "include_hidden": include_hidden,
+        "scorer": scorer,
+        "metadata": {
             "reward_mode": reward_mode,
             "config_path": str(args.config) if args.config else "",
         },
-    )
+    }
+    if rollout_mode == "direct":
+        records = generate_rollouts(tasks, **generation_kwargs)
+    elif rollout_mode == "self_debug":
+        result = generate_self_debug_rollouts(
+            tasks,
+            **generation_kwargs,
+            max_revisions=int(
+                _value(
+                    args.max_revisions,
+                    config_get(config, "self_debug.max_revisions"),
+                    default=config_get(config, "agent.max_revisions", 1),
+                )
+            ),
+            use_rule_based_repair=bool(
+                _value(
+                    False if args.disable_rule_repair else None,
+                    config_get(config, "self_debug.use_rule_based_repair"),
+                    default=config_get(config, "agent.use_rule_based_repair", True),
+                )
+            ),
+            revision_reward_discount=float(
+                _value(
+                    args.revision_reward_discount,
+                    config_get(config, "self_debug.revision_reward_discount"),
+                    default=1.0,
+                )
+            ),
+        )
+        records = list(result.records)
+        trace_output = _path_value(
+            args.trace_output,
+            config_get(config, "output.traces", config_get(config, "outputs.traces")),
+        )
+        if trace_output is not None:
+            write_agent_traces_jsonl(list(result.traces), trace_output)
+            print(f"wrote {len(result.traces)} self-debug traces to {trace_output}")
+        print(f"self_debug_final_pass_rate: {result.analysis.final_pass_rate:.4f}")
+        print(f"self_debug_revision_rate: {result.analysis.revision_rate:.4f}")
+    else:
+        raise SystemExit(f"unknown rollout mode: {rollout_mode}")
     write_rollouts_jsonl(records, output_path)
+    print(f"rollout_mode: {rollout_mode}")
     _print_summary(records, output_path)
     return 0
 

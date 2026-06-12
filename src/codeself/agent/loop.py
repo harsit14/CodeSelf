@@ -136,7 +136,13 @@ class SelfDebugAgentLoop:
         self.toolbox = toolbox or AgentToolbox()
         self.config = config or AgentLoopConfig()
 
-    def run_task(self, task: TaskSpec, *, sample_index: int = 0) -> AgentTrace:
+    def run_task(
+        self,
+        task: TaskSpec,
+        *,
+        sample_index: int = 0,
+        include_hidden: bool = True,
+    ) -> AgentTrace:
         prompt = self.prompt_template.render(task)
         generation = self.generator.generate(
             GenerationRequest(
@@ -153,15 +159,17 @@ class SelfDebugAgentLoop:
         parsed = extract_code(generation.text)
         code = parsed.code
         initial_code = code
+        generation_metadata: dict[str, str | int | float | bool] = {
+            "backend": generation.backend,
+            "model_name": generation.model_name,
+            **generation.metadata,
+        }
         steps: list[AgentStep] = [
             AgentStep(
                 kind="generation",
                 code=code,
                 parsed_status=parsed.status.value,
-                metadata={
-                    "backend": generation.backend,
-                    "model_name": generation.model_name,
-                },
+                metadata=generation_metadata,
             )
         ]
 
@@ -192,7 +200,7 @@ class SelfDebugAgentLoop:
             if not changed:
                 break
 
-        final = self.toolbox.submit_final(task, code)
+        final = self.toolbox.submit_final(task, code, include_hidden=include_hidden)
         steps.append(_tool_step("submit_final", final, code=code))
         return AgentTrace(
             task_id=task.task_id,
@@ -206,6 +214,7 @@ class SelfDebugAgentLoop:
             final_reward=dict(final.payload["reward"]),
             metadata={
                 "seed": self.config.seed,
+                "include_hidden": include_hidden,
                 "max_revisions": self.config.max_revisions,
                 "use_rule_based_repair": self.config.use_rule_based_repair,
             },
@@ -304,7 +313,8 @@ def read_agent_traces_jsonl(path: str | Path) -> list[AgentTrace]:
             try:
                 traces.append(AgentTrace.from_dict(json.loads(stripped)))
             except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-                raise ValueError(f"invalid agent trace JSONL at {input_path}:{line_number}") from exc
+                message = f"invalid agent trace JSONL at {input_path}:{line_number}"
+                raise ValueError(message) from exc
     return traces
 
 

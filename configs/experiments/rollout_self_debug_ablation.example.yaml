@@ -1,0 +1,38 @@
+experiment:
+  name: rollout_self_debug_ablation
+  seed: 20260601
+
+data:
+  tasks: configs/datasets/tasks.example.jsonl
+  split: train
+  limit: 10
+  skip_quality_checks: false
+  near_duplicate_threshold: 0.92
+
+prompt:
+  template: direct_solution_v1
+
+rollout:
+  mode: self_debug
+
+generation:
+  backend: mock
+  samples_per_task: 4
+  max_new_tokens: 512
+  temperature: 0.8
+  top_p: 0.95
+
+self_debug:
+  max_revisions: 1
+  use_rule_based_repair: true
+  revision_reward_discount: 0.9
+
+execution:
+  include_hidden: true
+
+reward:
+  mode: correctness_v0
+
+output:
+  rollouts: outputs/rollouts/self_debug_ablation.jsonl
+  traces: outputs/reports/self_debug_ablation_traces.jsonl

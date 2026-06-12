@@ -28,7 +28,18 @@ from codeself.agent.prompts import (
     PromptTemplate,
     get_prompt_template,
 )
-from codeself.agent.rollouts import RolloutRecord, generate_rollouts, read_rollouts_jsonl, write_rollouts_jsonl
+from codeself.agent.rollouts import (
+    RolloutRecord,
+    generate_rollouts,
+    read_rollouts_jsonl,
+    write_rollouts_jsonl,
+)
+from codeself.agent.self_debug_rollouts import (
+    SelfDebugRolloutConfig,
+    SelfDebugRolloutResult,
+    generate_self_debug_rollouts,
+    rollout_record_from_trace,
+)
 from codeself.agent.tools import AgentToolbox, ToolCall, ToolResult, infer_simple_revision
 
 __all__ = [
@@ -47,6 +58,8 @@ __all__ = [
     "PromptTemplate",
     "RolloutRecord",
     "SelfDebugAgentLoop",
+    "SelfDebugRolloutConfig",
+    "SelfDebugRolloutResult",
     "StaticGenerator",
     "StrategyAnalysis",
     "ToolCall",
@@ -55,11 +68,13 @@ __all__ = [
     "analyze_traces",
     "extract_code",
     "generate_rollouts",
+    "generate_self_debug_rollouts",
     "get_prompt_template",
     "infer_simple_revision",
     "make_generator",
     "read_agent_traces_jsonl",
     "read_rollouts_jsonl",
+    "rollout_record_from_trace",
     "run_agentic_tasks",
     "write_agent_traces_jsonl",
     "write_rollouts_jsonl",

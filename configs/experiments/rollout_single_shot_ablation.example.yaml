@@ -1,0 +1,32 @@
+experiment:
+  name: rollout_single_shot_ablation
+  seed: 20260601
+
+data:
+  tasks: configs/datasets/tasks.example.jsonl
+  split: train
+  limit: 10
+  skip_quality_checks: false
+  near_duplicate_threshold: 0.92
+
+prompt:
+  template: direct_solution_v1
+
+rollout:
+  mode: direct
+
+generation:
+  backend: mock
+  samples_per_task: 4
+  max_new_tokens: 512
+  temperature: 0.8
+  top_p: 0.95
+
+execution:
+  include_hidden: true
+
+reward:
+  mode: correctness_v0
+
+output:
+  rollouts: outputs/rollouts/single_shot_ablation.jsonl

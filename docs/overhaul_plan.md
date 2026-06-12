@@ -677,13 +677,50 @@ Remaining risks:
 
 ## Phase 8: Self-Debug Training Mode
 
-Status: pending
+Status: started
 
 Goals:
 
 - Make generate -> execute -> feedback -> revise a first-class rollout mode.
-- Reward final attempts, with optional discounted credit across rounds.
-- Add single-shot versus self-debug ablation configs.
+  Started.
+- Reward final attempts, with optional discounted credit across rounds. Started.
+- Add single-shot versus self-debug ablation configs. Started.
+
+First slice shipped:
+
+- Added `SelfDebugRolloutConfig` and `SelfDebugRolloutResult` as the bridge
+  between agent traces and training-ready rollout records.
+- Added `generate_self_debug_rollouts()` to run the existing public-test
+  self-debug loop over task/sample grids while returning ordinary
+  `RolloutRecord` objects plus trace artifacts.
+- Added `rollout_record_from_trace()` so the final revised attempt becomes the
+  rollout response, while trace metadata records revision counts, tool calls,
+  public-test pass status, final pass status, and initial parse status.
+- `AgentToolbox` now accepts injected reward scorers, and final submissions can
+  respect `include_hidden`, so self-debug rollouts share reward modes and
+  public-only evaluation behavior with direct rollouts.
+- Added optional positive-reward discounting by revision count through
+  `revision_reward_discount`, preserving the undiscounted final reward in
+  reward metrics.
+- Extended `scripts/run_rollouts.py` with `--rollout-mode self_debug`,
+  `--trace-output`, `--max-revisions`, `--disable-rule-repair`, and
+  `--revision-reward-discount`.
+- Added single-shot and self-debug ablation config examples under
+  `configs/experiments/`.
+- Added tests for trace-to-rollout conversion, discounted final rewards,
+  self-debug metadata, CLI trace output, and downstream GRPO/PPO rollout-cycle
+  compatibility.
+
+Remaining risks:
+
+- The revision policy is still rule-based for smoke testing. A model-generated
+  revision prompt that includes structured feedback is the next substantive
+  self-debug training slice.
+- Current training loops still collect direct rollouts internally. They can
+  consume self-debug rollout JSONL through the batch builders, but online GRPO
+  and PPO need config switches before self-debug collection is native there.
+- Discounting is intentionally simple: positive final reward is scaled by
+  `discount ** revision_count`, while non-positive outcomes are left unchanged.
 
 ## Phase 9: Documentation And Paper-Ready Package
 
