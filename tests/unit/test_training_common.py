@@ -38,7 +38,7 @@ class TrainingCommonTests(unittest.TestCase):
         self.assertTrue(specs["from_scratch"].updates_model_weights)
         self.assertEqual(get_backend_spec("trl").name, "trl")
 
-    def test_backend_availability_reports_missing_packages_without_import_side_effects(self) -> None:
+    def test_backend_availability_is_dependency_free(self) -> None:
         availability = backend_availability("smoke")
 
         self.assertTrue(availability.available)
@@ -48,8 +48,16 @@ class TrainingCommonTests(unittest.TestCase):
         config = ModelRuntimeConfig(name="Qwen/Qwen2.5-Coder-0.5B", tokenizer=None)
 
         self.assertEqual(config.tokenizer_name, "Qwen/Qwen2.5-Coder-0.5B")
+        self.assertEqual(config.lora_alpha, 32)
+        self.assertEqual(config.lora_target_modules, ())
         with self.assertRaises(ValueError):
             ModelRuntimeConfig(name="m", use_lora=True, full_finetune=True)
+        with self.assertRaises(ValueError):
+            ModelRuntimeConfig(name="m", lora_alpha=0)
+        with self.assertRaises(ValueError):
+            ModelRuntimeConfig(name="m", lora_dropout=1.0)
+        with self.assertRaises(ValueError):
+            ModelRuntimeConfig(name="m", lora_target_modules=("q_proj", ""))
 
     def test_training_core_config_builds_from_nested_mapping(self) -> None:
         config = build_training_core_config(
@@ -59,6 +67,9 @@ class TrainingCommonTests(unittest.TestCase):
                     "name": "Qwen/Qwen2.5-Coder-0.5B",
                     "tokenizer": "Qwen/Qwen2.5-Coder-0.5B",
                     "lora_rank": 8,
+                    "lora_alpha": 16,
+                    "lora_dropout": 0.05,
+                    "lora_target_modules": ["q_proj", "v_proj"],
                     "dtype": "bf16",
                 },
                 "rollout": {"group_size": 3, "max_response_tokens": 128},
@@ -76,6 +87,9 @@ class TrainingCommonTests(unittest.TestCase):
         self.assertEqual(config.backend, "smoke")
         self.assertEqual(config.seed, 7)
         self.assertEqual(config.model.lora_rank, 8)
+        self.assertEqual(config.model.lora_alpha, 16)
+        self.assertAlmostEqual(config.model.lora_dropout, 0.05)
+        self.assertEqual(config.model.lora_target_modules, ("q_proj", "v_proj"))
         self.assertEqual(config.optimizer.learning_rate, 2e-6)
         self.assertEqual(config.rollout.group_size, 3)
         self.assertEqual(config.rollout.max_response_tokens, 128)

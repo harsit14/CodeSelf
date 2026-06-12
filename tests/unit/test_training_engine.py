@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from types import ModuleType
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
@@ -16,6 +18,7 @@ from codeself.training import (  # noqa: E402
     ModelRuntimeConfig,
     TransformersEngineConfig,
     WhitespaceTokenizerEngine,
+    attach_lora_adapter,
     build_generated_sequence,
     build_training_core_config,
     encode_prompt_response,
@@ -130,6 +133,52 @@ class TrainingEngineTests(unittest.TestCase):
         self.assertTrue(payload["local_files_only"])
         self.assertEqual(payload["model"]["name"], "Qwen/Qwen2.5-Coder-0.5B")
         self.assertIsNone(payload["device_map"])
+
+    def test_attach_lora_adapter_builds_peft_config_lazily(self) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeLoraConfig:
+            def __init__(self, **kwargs: object) -> None:
+                captured["lora_kwargs"] = kwargs
+
+        class FakeTaskType:
+            CAUSAL_LM = "CAUSAL_LM"
+
+        def fake_get_peft_model(model: object, lora_config: object) -> object:
+            captured["model"] = model
+            captured["lora_config"] = lora_config
+            return {"base_model": model, "lora_config": lora_config}
+
+        fake_peft = ModuleType("peft")
+        fake_peft.LoraConfig = FakeLoraConfig
+        fake_peft.TaskType = FakeTaskType
+        fake_peft.get_peft_model = fake_get_peft_model
+        base_model = object()
+        model_config = ModelRuntimeConfig(
+            name="local-model",
+            use_lora=True,
+            full_finetune=False,
+            lora_rank=4,
+            lora_alpha=8,
+            lora_dropout=0.1,
+            lora_target_modules=("q_proj", "v_proj"),
+        )
+
+        with patch.dict(sys.modules, {"peft": fake_peft}):
+            adapted = attach_lora_adapter(base_model, model_config)
+
+        self.assertIs(adapted["base_model"], base_model)
+        self.assertEqual(
+            captured["lora_kwargs"],
+            {
+                "r": 4,
+                "lora_alpha": 8,
+                "lora_dropout": 0.1,
+                "bias": "none",
+                "task_type": "CAUSAL_LM",
+                "target_modules": ["q_proj", "v_proj"],
+            },
+        )
 
     def test_model_engine_generator_adapts_training_engine_to_rollouts(self) -> None:
         engine = _FakeModelEngine()

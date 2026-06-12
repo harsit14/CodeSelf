@@ -19,8 +19,12 @@ model:
   device: mps
   local_files_only: true
   trust_remote_code: false
-  use_lora: false
-  full_finetune: true
+  use_lora: true
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  lora_target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  full_finetune: false
   old_policy:
     enabled: false
   reference:

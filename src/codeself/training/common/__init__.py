@@ -27,6 +27,7 @@ from codeself.training.common.engine import (
     TransformersEngineConfig,
     TransformersModelEngine,
     TransformersTokenizerEngine,
+    attach_lora_adapter,
     build_generated_sequence,
 )
 from codeself.training.common.logprobs import (
@@ -77,6 +78,7 @@ __all__ = [
     "TrainingBatch",
     "TrainingCoreConfig",
     "WhitespaceTokenizerEngine",
+    "attach_lora_adapter",
     "backend_availability",
     "build_generated_sequence",
     "build_prompt_response_mask",

@@ -212,6 +212,12 @@ class TransformersModelEngine:
         if config.device_map is not None:
             model_kwargs["device_map"] = config.device_map
         self._model = AutoModelForCausalLM.from_pretrained(config.model.name, **model_kwargs)
+        if config.model.use_lora:
+            self._model = attach_lora_adapter(self._model, config.model)
+        _maybe_enable_gradient_checkpointing(
+            self._model,
+            enabled=config.model.gradient_checkpointing,
+        )
         self._model.eval()
         if config.device_map is None and config.model.device not in {"auto", "cpu"}:
             self._model.to(config.model.device)
@@ -342,3 +348,36 @@ def _torch_dtype(torch: Any, dtype: str) -> Any:
     if dtype == "bf16":
         return torch.bfloat16
     return None
+
+
+def attach_lora_adapter(model: Any, config: ModelRuntimeConfig) -> Any:
+    """Attach a PEFT LoRA adapter to a causal-LM model."""
+
+    try:
+        from peft import LoraConfig, TaskType, get_peft_model
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "model.use_lora=true requires the optional package: peft"
+        ) from exc
+
+    task_type = getattr(TaskType, "CAUSAL_LM", "CAUSAL_LM")
+    lora_kwargs: dict[str, object] = {
+        "r": config.lora_rank,
+        "lora_alpha": config.lora_alpha,
+        "lora_dropout": config.lora_dropout,
+        "bias": "none",
+        "task_type": task_type,
+    }
+    if config.lora_target_modules:
+        lora_kwargs["target_modules"] = list(config.lora_target_modules)
+    return get_peft_model(model, LoraConfig(**lora_kwargs))
+
+
+def _maybe_enable_gradient_checkpointing(model: Any, *, enabled: bool) -> None:
+    if not enabled:
+        return
+    model_config = getattr(model, "config", None)
+    if model_config is not None and hasattr(model_config, "use_cache"):
+        model_config.use_cache = False
+    if hasattr(model, "gradient_checkpointing_enable"):
+        model.gradient_checkpointing_enable()

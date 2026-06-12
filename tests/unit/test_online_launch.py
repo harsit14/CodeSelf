@@ -119,8 +119,12 @@ class OnlineTrainingLaunchTests(unittest.TestCase):
                 model={
                     "backend": "transformers",
                     "name": "local-model",
-                    "use_lora": False,
-                    "full_finetune": True,
+                    "use_lora": True,
+                    "full_finetune": False,
+                    "lora_rank": 4,
+                    "lora_alpha": 8,
+                    "lora_dropout": 0.1,
+                    "lora_target_modules": ["q_proj", "v_proj"],
                     "value_head": {"hidden_size": 4},
                     "old_policy": {"enabled": True},
                     "old_value": {"enabled": True},
@@ -146,6 +150,13 @@ class OnlineTrainingLaunchTests(unittest.TestCase):
         self.assertEqual(launch.algorithm, "ppo")
         self.assertEqual(launch.model_backend, "transformers")
         self.assertEqual(launch.generation_backend, "policy_engine")
+        model_runtime = online_launch_module._build_model_runtime_config(config)
+        self.assertTrue(model_runtime.use_lora)
+        self.assertFalse(model_runtime.full_finetune)
+        self.assertEqual(model_runtime.lora_rank, 4)
+        self.assertEqual(model_runtime.lora_alpha, 8)
+        self.assertAlmostEqual(model_runtime.lora_dropout, 0.1)
+        self.assertEqual(model_runtime.lora_target_modules, ("q_proj", "v_proj"))
         self.assertEqual(launch.total_rollouts, 2)
         self.assertEqual(launch.records_used, 2)
         self.assertEqual(

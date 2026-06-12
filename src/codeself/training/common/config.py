@@ -23,15 +23,26 @@ class ModelRuntimeConfig:
     gradient_checkpointing: bool = True
     use_lora: bool = True
     lora_rank: int = 16
+    lora_alpha: int = 32
+    lora_dropout: float = 0.0
+    lora_target_modules: tuple[str, ...] = ()
     full_finetune: bool = False
 
     def __post_init__(self) -> None:
+        target_modules = _str_tuple(self.lora_target_modules)
+        object.__setattr__(self, "lora_target_modules", target_modules)
         if not self.name.strip():
             raise ValueError("model name must not be empty")
         if self.dtype not in {"fp32", "fp16", "bf16"}:
             raise ValueError("dtype must be fp32, fp16, or bf16")
         if self.lora_rank <= 0:
             raise ValueError("lora_rank must be positive")
+        if self.lora_alpha <= 0:
+            raise ValueError("lora_alpha must be positive")
+        if not 0 <= self.lora_dropout < 1:
+            raise ValueError("lora_dropout must be in [0, 1)")
+        if any(not module.strip() for module in target_modules):
+            raise ValueError("lora_target_modules must not contain empty values")
         if self.full_finetune and self.use_lora:
             raise ValueError("full_finetune and use_lora cannot both be true")
 
@@ -51,6 +62,9 @@ class ModelRuntimeConfig:
             "gradient_checkpointing": self.gradient_checkpointing,
             "use_lora": self.use_lora,
             "lora_rank": self.lora_rank,
+            "lora_alpha": self.lora_alpha,
+            "lora_dropout": self.lora_dropout,
+            "lora_target_modules": list(self.lora_target_modules),
             "full_finetune": self.full_finetune,
         }
 
@@ -179,7 +193,10 @@ def build_training_core_config(config: dict[str, Any]) -> TrainingCoreConfig:
         trust_remote_code=bool(config_get(config, "model.trust_remote_code", False)),
         gradient_checkpointing=bool(config_get(config, "model.gradient_checkpointing", True)),
         use_lora=bool(config_get(config, "model.use_lora", True)),
-        lora_rank=int(config_get(config, "model.lora_rank", config_get(config, "model.lora_rank", 16))),
+        lora_rank=int(config_get(config, "model.lora_rank", 16)),
+        lora_alpha=int(config_get(config, "model.lora_alpha", 32)),
+        lora_dropout=float(config_get(config, "model.lora_dropout", 0.0)),
+        lora_target_modules=_str_tuple(config_get(config, "model.lora_target_modules", ())),
         full_finetune=bool(config_get(config, "model.full_finetune", False)),
     )
     optimizer = OptimizerConfig(
@@ -191,21 +208,41 @@ def build_training_core_config(config: dict[str, Any]) -> TrainingCoreConfig:
         ),
         max_grad_norm=float(config_get(config, "training.max_grad_norm", 1.0)),
     )
-    group_size = int(config_get(config, "rollout.group_size", config_get(config, "generation.group_size", 4)))
+    group_size = int(
+        config_get(config, "rollout.group_size", config_get(config, "generation.group_size", 4))
+    )
     samples_per_task = int(
-        config_get(config, "rollout.samples_per_task", config_get(config, "generation.samples_per_task", group_size))
+        config_get(
+            config,
+            "rollout.samples_per_task",
+            config_get(config, "generation.samples_per_task", group_size),
+        )
     )
     rollout = RolloutRuntimeConfig(
         group_size=group_size,
         samples_per_task=samples_per_task,
         max_prompt_tokens=int(config_get(config, "rollout.max_prompt_tokens", 1024)),
         max_response_tokens=int(
-            config_get(config, "rollout.max_response_tokens", config_get(config, "generation.max_new_tokens", 512))
+            config_get(
+                config,
+                "rollout.max_response_tokens",
+                config_get(config, "generation.max_new_tokens", 512),
+            )
         ),
         temperature=float(
-            config_get(config, "rollout.temperature", config_get(config, "generation.temperature", 0.8))
+            config_get(
+                config,
+                "rollout.temperature",
+                config_get(config, "generation.temperature", 0.8),
+            )
         ),
-        top_p=float(config_get(config, "rollout.top_p", config_get(config, "generation.top_p", 0.95))),
+        top_p=float(
+            config_get(
+                config,
+                "rollout.top_p",
+                config_get(config, "generation.top_p", 0.95),
+            )
+        ),
     )
     return TrainingCoreConfig(
         algorithm=str(config_get(config, "training.algorithm", "grpo")).replace("_smoke", ""),
@@ -222,3 +259,11 @@ def build_training_core_config(config: dict[str, Any]) -> TrainingCoreConfig:
 
 def _optional_str(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+def _str_tuple(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(item) for item in value)

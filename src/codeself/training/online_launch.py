@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -347,11 +347,6 @@ def _build_transformers_components(
     algorithm: OnlineAlgorithm,
 ) -> _LauncherComponents:
     model_config = _build_model_runtime_config(config)
-    if model_config.use_lora:
-        raise ValueError(
-            "model.use_lora=true is not supported by the online launcher yet; "
-            "set model.use_lora=false and model.full_finetune=true."
-        )
     engine_config = TransformersEngineConfig(
         model=model_config,
         local_files_only=bool(config_get(config, "model.local_files_only", True)),
@@ -391,7 +386,7 @@ def _build_transformers_components(
         )
     reference_model = _optional_transformers_model(
         config,
-        engine_config,
+        _reference_engine_config(config, engine_config),
         "model.reference.enabled",
     )
     return _LauncherComponents(
@@ -429,7 +424,27 @@ def _build_model_runtime_config(config: dict[str, Any]) -> ModelRuntimeConfig:
         gradient_checkpointing=bool(config_get(config, "model.gradient_checkpointing", True)),
         use_lora=use_lora,
         lora_rank=int(config_get(config, "model.lora_rank", 16)),
+        lora_alpha=int(config_get(config, "model.lora_alpha", 32)),
+        lora_dropout=float(config_get(config, "model.lora_dropout", 0.0)),
+        lora_target_modules=_str_tuple(config_get(config, "model.lora_target_modules", ())),
         full_finetune=full_finetune,
+    )
+
+
+def _reference_engine_config(
+    config: dict[str, Any],
+    engine_config: TransformersEngineConfig,
+) -> TransformersEngineConfig:
+    if not bool(config_get(config, "model.reference.enabled", False)):
+        return engine_config
+    reference_use_lora = bool(config_get(config, "model.reference.use_lora", False))
+    return replace(
+        engine_config,
+        model=replace(
+            engine_config.model,
+            use_lora=reference_use_lora,
+            full_finetune=not reference_use_lora,
+        ),
     )
 
 
@@ -530,6 +545,14 @@ def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+def _str_tuple(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(item) for item in value)
 
 
 class _TinyOnlineCausalLM:

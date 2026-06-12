@@ -821,12 +821,32 @@ Seventh slice shipped:
 - Added tests for separate revision request settings, rollout metadata, CLI
   propagation, and online config parsing.
 
+Eighth slice shipped:
+
+- Added LoRA runtime fields for alpha, dropout, and target modules to the
+  shared `ModelRuntimeConfig` and training-core config loader.
+- `TransformersModelEngine` now lazily attaches PEFT LoRA adapters when
+  `model.use_lora=true`, preserving the dependency-free import path when LoRA
+  is not requested.
+- The online GRPO/PPO launcher now accepts LoRA Transformers configs instead of
+  rejecting them, so policy generation and optimization share the same adapted
+  causal-LM object.
+- PPO still wraps the adapted policy with the integrated value head, while
+  old-policy and old-value snapshots can use matching LoRA architecture for
+  state syncing.
+- Frozen reference models default to the base causal LM when policy LoRA is
+  enabled, keeping KL references separate from the trainable adapter path.
+- Updated the GRPO/PPO Transformers launch templates and lower-level debug
+  configs to use LoRA by default for local small-model runs.
+- Added tests for PEFT adapter config construction, LoRA runtime parsing, and
+  the offline PPO Transformers launch path with `use_lora=true`.
+
 Remaining risks:
 
 - GRPO and PPO now both have single-config launcher paths for local
-  Transformers causal-LM policies. The launcher still does not assemble LoRA or
-  a separately pretrained critic/value model; it uses full fine-tuning with an
-  integrated PPO value head.
+  Transformers causal-LM policies with LoRA adapters. The launcher still does
+  not assemble a separately pretrained critic/value model for PPO; it uses an
+  integrated PPO value head by default.
 - Discounting is intentionally simple: positive final reward is scaled by
   `discount ** revision_count`, while non-positive outcomes are left unchanged.
 
