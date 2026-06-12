@@ -166,19 +166,40 @@ class OnlineTrainingConfigBuilderTests(unittest.TestCase):
 
     def test_example_configs_load_into_typed_online_configs(self) -> None:
         cases = (
-            ("grpo", ROOT / "configs/experiments/grpo_online_self_debug.example.yaml"),
-            ("ppo", ROOT / "configs/experiments/ppo_online_self_debug.example.yaml"),
+            (
+                "grpo",
+                "self_debug",
+                True,
+                ROOT / "configs/experiments/grpo_online_self_debug.example.yaml",
+            ),
+            (
+                "ppo",
+                "self_debug",
+                True,
+                ROOT / "configs/experiments/ppo_online_self_debug.example.yaml",
+            ),
+            (
+                "grpo",
+                "self_debug",
+                True,
+                ROOT / "configs/experiments/grpo_online_transformers_launch.example.yaml",
+            ),
+            (
+                "ppo",
+                "direct",
+                False,
+                ROOT / "configs/experiments/ppo_online_toy_launch.example.yaml",
+            ),
         )
 
-        for algorithm, path in cases:
+        for algorithm, rollout_mode, evaluation_enabled, path in cases:
             with self.subTest(path=path):
                 raw_config = load_config_file(path)
                 built = build_online_training_config(raw_config)
 
                 self.assertEqual(resolve_online_algorithm(raw_config), algorithm)
-                self.assertEqual(built.cycle.rollout_mode, "self_debug")
-                self.assertEqual(built.cycle.self_debug.revision_strategy, "rule_based")
-                self.assertIsNotNone(built.evaluation)
+                self.assertEqual(built.cycle.rollout_mode, rollout_mode)
+                self.assertEqual(built.evaluation is not None, evaluation_enabled)
 
     def test_inspect_online_training_config_script_writes_normalized_json(self) -> None:
         config = {

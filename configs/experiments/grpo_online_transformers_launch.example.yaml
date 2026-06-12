@@ -1,0 +1,71 @@
+experiment:
+  name: grpo_online_transformers_self_debug
+  seed: 20260601
+algorithm: grpo
+data:
+  tasks: data/processed/codeself_tasks.jsonl
+  split: train
+  limit: 8
+  eval_split: dev
+  eval_limit: 8
+  skip_quality_checks: false
+output:
+  dir: artifacts/grpo_online_transformers_self_debug
+model:
+  backend: transformers
+  name: Qwen/Qwen2.5-Coder-0.5B
+  tokenizer: Qwen/Qwen2.5-Coder-0.5B
+  dtype: fp16
+  device: mps
+  local_files_only: true
+  trust_remote_code: false
+  use_lora: false
+  full_finetune: true
+  old_policy:
+    enabled: false
+  reference:
+    enabled: false
+prompt:
+  template: direct_solution_v1
+rollout:
+  mode: self_debug
+  group_size: 2
+  samples_per_task: 2
+  max_prompt_tokens: 1024
+  max_response_tokens: 256
+  temperature: 0.7
+  top_p: 0.95
+self_debug:
+  max_revisions: 1
+  revision_strategy: rule_based
+  revision_prompt_template: self_debug_revision_v1
+  revision_reward_discount: 1.0
+execution:
+  include_hidden: true
+batch:
+  response_source: raw_completion
+  include_failed_parses: true
+  min_reward_std: 0.00000001
+training:
+  max_batches: 2
+  step_scheduler: true
+  device: mps
+  dtype: fp16
+  optimizer:
+    learning_rate: 0.000001
+    weight_decay: 0.0
+    warmup_steps: 0
+    gradient_accumulation_steps: 1
+    max_grad_norm: 1.0
+  loss:
+    clip_epsilon: 0.2
+    kl_beta: 0.0
+    max_log_ratio: 20.0
+evaluation:
+  enabled: true
+  samples_per_task: 1
+  max_new_tokens: 256
+  temperature: 0.0
+  top_p: 1.0
+  include_hidden: true
+  ks: [1]

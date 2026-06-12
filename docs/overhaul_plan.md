@@ -772,11 +772,29 @@ Fourth slice shipped:
 - Added unit coverage for the GRPO builder, PPO builder, example config loading,
   and the inspector CLI.
 
+Fifth slice shipped:
+
+- Added `run_online_training_from_config()` and
+  `run_online_training_from_config_file()` to assemble tasks, typed online
+  configs, prompt templates, reward scorers, model/generator/tokenizer surfaces,
+  and artifact directories from one experiment mapping.
+- Added `scripts/run_online_training.py` as the single-config command-line
+  launcher for online GRPO/PPO runs.
+- Added a compact `launch_summary.json` artifact beside the per-cycle online
+  training outputs.
+- Added a fast `toy` model backend for launcher smoke tests and local command
+  validation without downloading model weights.
+- Added a GRPO Transformers launch template tuned for local cached models on
+  Apple Silicon (`device: mps`, `dtype: fp16`) and a PPO toy-launch template.
+- Added tests for GRPO launch execution, PPO launch execution through the CLI,
+  example config parsing, and the explicit PPO Transformers value-head guardrail.
+
 Remaining risks:
 
-- Online config loading now exists for typed config validation and inspection,
-  but the repository still needs a full model/dataset assembly launcher before
-  GRPO/PPO online training can run end to end from a single experiment file.
+- GRPO now has a real single-config launcher path for local Transformers
+  causal-LM policies. PPO launch works through the toy backend, but real PPO
+  still needs a value-head model integration before `model.backend=transformers`
+  can run end to end.
 - Model revision uses the same generator backend and sampling settings as the
   initial attempt. Later work should split initial and revision generation
   configs for more precise ablations.
