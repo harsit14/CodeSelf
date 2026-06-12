@@ -98,6 +98,37 @@ class AgenticLoopTests(unittest.TestCase):
         self.assertNotIn("assert add_one(0) == 1", revision_step.metadata["revision_prompt"])
         self.assertIn("return x + 1", trace.final_code)
 
+    def test_model_revision_can_use_separate_sampling_settings(self) -> None:
+        generator = _TwoStageRevisionGenerator()
+        loop = SelfDebugAgentLoop(
+            generator=generator,
+            prompt_template=DIRECT_SOLUTION_TEMPLATE,
+            config=AgentLoopConfig(
+                max_revisions=1,
+                max_new_tokens=64,
+                temperature=0.9,
+                top_p=0.95,
+                revision_max_new_tokens=17,
+                revision_temperature=0.2,
+                revision_top_p=0.7,
+                use_rule_based_repair=False,
+                use_model_revision=True,
+            ),
+        )
+
+        trace = loop.run_task(_task())
+        revision_step = next(step for step in trace.steps if step.kind == "revision")
+
+        self.assertEqual(generator.requests[0].max_new_tokens, 64)
+        self.assertEqual(generator.requests[0].temperature, 0.9)
+        self.assertEqual(generator.requests[1].max_new_tokens, 17)
+        self.assertEqual(generator.requests[1].temperature, 0.2)
+        self.assertEqual(generator.requests[1].top_p, 0.7)
+        self.assertEqual(revision_step.metadata["revision_request_max_new_tokens"], 17)
+        self.assertEqual(revision_step.metadata["revision_request_temperature"], 0.2)
+        self.assertEqual(trace.metadata["revision_max_new_tokens"], 17)
+        self.assertTrue(trace.final_passed)
+
     def test_trace_round_trip_and_analysis(self) -> None:
         loop = SelfDebugAgentLoop(
             generator=StaticGenerator("```python\ndef add_one(x):\n    return x\n```"),
@@ -181,7 +212,11 @@ class _TwoStageRevisionGenerator(CodeGenerator):
     backend_name = "unit"
     model_name = "two-stage-revision"
 
+    def __init__(self) -> None:
+        self.requests: list[GenerationRequest] = []
+
     def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.requests.append(request)
         if "Public-test feedback:" in request.prompt:
             completion = "```python\ndef add_one(x):\n    return x + 1\n```"
             stage = "revision"

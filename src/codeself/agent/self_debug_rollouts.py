@@ -32,6 +32,9 @@ class SelfDebugRolloutConfig:
     max_new_tokens: int = 512
     temperature: float = 0.8
     top_p: float = 0.95
+    revision_max_new_tokens: int | None = None
+    revision_temperature: float | None = None
+    revision_top_p: float | None = None
     include_hidden: bool = True
     use_rule_based_repair: bool = True
     revision_strategy: str = "rule_based"
@@ -45,10 +48,16 @@ class SelfDebugRolloutConfig:
             raise ValueError("max_revisions must be non-negative")
         if self.max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be positive")
+        if self.revision_max_new_tokens is not None and self.revision_max_new_tokens <= 0:
+            raise ValueError("revision_max_new_tokens must be positive when set")
         if self.temperature < 0:
             raise ValueError("temperature must be non-negative")
+        if self.revision_temperature is not None and self.revision_temperature < 0:
+            raise ValueError("revision_temperature must be non-negative when set")
         if not 0 < self.top_p <= 1:
             raise ValueError("top_p must be in (0, 1]")
+        if self.revision_top_p is not None and not 0 < self.revision_top_p <= 1:
+            raise ValueError("revision_top_p must be in (0, 1] when set")
         if not 0 < self.revision_reward_discount <= 1:
             raise ValueError("revision_reward_discount must be in (0, 1]")
 
@@ -59,6 +68,9 @@ class SelfDebugRolloutConfig:
             max_new_tokens=self.max_new_tokens,
             temperature=self.temperature,
             top_p=self.top_p,
+            revision_max_new_tokens=self.revision_max_new_tokens,
+            revision_temperature=self.revision_temperature,
+            revision_top_p=self.revision_top_p,
             use_rule_based_repair=(
                 self.use_rule_based_repair and self.revision_strategy == "rule_based"
             ),
@@ -73,12 +85,38 @@ class SelfDebugRolloutConfig:
             "max_new_tokens": self.max_new_tokens,
             "temperature": self.temperature,
             "top_p": self.top_p,
+            "revision_max_new_tokens": self.revision_max_new_tokens,
+            "revision_temperature": self.revision_temperature,
+            "revision_top_p": self.revision_top_p,
+            "resolved_revision_max_new_tokens": self.resolved_revision_max_new_tokens,
+            "resolved_revision_temperature": self.resolved_revision_temperature,
+            "resolved_revision_top_p": self.resolved_revision_top_p,
             "include_hidden": self.include_hidden,
             "use_rule_based_repair": self.use_rule_based_repair,
             "revision_strategy": self.revision_strategy,
             "revision_prompt_template": self.revision_prompt_template,
             "revision_reward_discount": self.revision_reward_discount,
         }
+
+    @property
+    def resolved_revision_max_new_tokens(self) -> int:
+        return (
+            self.revision_max_new_tokens
+            if self.revision_max_new_tokens is not None
+            else self.max_new_tokens
+        )
+
+    @property
+    def resolved_revision_temperature(self) -> float:
+        return (
+            self.revision_temperature
+            if self.revision_temperature is not None
+            else self.temperature
+        )
+
+    @property
+    def resolved_revision_top_p(self) -> float:
+        return self.revision_top_p if self.revision_top_p is not None else self.top_p
 
 
 @dataclass(frozen=True)
@@ -113,6 +151,9 @@ def generate_self_debug_rollouts(
     temperature: float,
     top_p: float,
     include_hidden: bool,
+    revision_max_new_tokens: int | None = None,
+    revision_temperature: float | None = None,
+    revision_top_p: float | None = None,
     max_revisions: int = 1,
     use_rule_based_repair: bool = True,
     revision_strategy: str = "rule_based",
@@ -135,6 +176,9 @@ def generate_self_debug_rollouts(
         max_new_tokens=max_new_tokens,
         temperature=temperature,
         top_p=top_p,
+        revision_max_new_tokens=revision_max_new_tokens,
+        revision_temperature=revision_temperature,
+        revision_top_p=revision_top_p,
         include_hidden=include_hidden,
         use_rule_based_repair=use_rule_based_repair,
         revision_strategy=effective_revision_strategy,
@@ -220,6 +264,11 @@ def rollout_record_from_trace(
             "revision_prompt_template": str(
                 trace.metadata.get("revision_prompt_template", "")
             ),
+            "revision_max_new_tokens": int(
+                trace.metadata.get("revision_max_new_tokens", 0)
+            ),
+            "revision_temperature": float(trace.metadata.get("revision_temperature", 0.0)),
+            "revision_top_p": float(trace.metadata.get("revision_top_p", 0.0)),
             "revision_count": trace.revision_count,
             "tool_call_count": trace.tool_call_count,
             "public_test_passed": _last_tool_ok(trace, "run_public_tests"),

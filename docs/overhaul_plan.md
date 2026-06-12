@@ -804,15 +804,29 @@ Sixth slice shipped:
 - Replaced the previous PPO Transformers guardrail test with an offline fake
   Transformers PPO launch test, plus direct value-head shape coverage.
 
+Seventh slice shipped:
+
+- Split self-debug initial-generation sampling from model-revision sampling with
+  optional `revision_max_new_tokens`, `revision_temperature`, and
+  `revision_top_p` fields.
+- `AgentLoopConfig`, `SelfDebugRolloutConfig`, and
+  `SelfDebugCollectionConfig` now inherit initial sampling settings by default
+  while recording the resolved revision settings in traces and rollout metadata.
+- `scripts/run_rollouts.py` and `scripts/run_agentic.py` now expose matching
+  `--revision-*` CLI flags for ablation runs.
+- Online GRPO/PPO config builders parse revision sampling overrides from
+  `self_debug.*` or legacy `agent.*` config paths.
+- Updated `rollout_self_debug_model_revision.example.yaml` to demonstrate a
+  colder, shorter model-generated revision pass.
+- Added tests for separate revision request settings, rollout metadata, CLI
+  propagation, and online config parsing.
+
 Remaining risks:
 
 - GRPO and PPO now both have single-config launcher paths for local
   Transformers causal-LM policies. The launcher still does not assemble LoRA or
   a separately pretrained critic/value model; it uses full fine-tuning with an
   integrated PPO value head.
-- Model revision uses the same generator backend and sampling settings as the
-  initial attempt. Later work should split initial and revision generation
-  configs for more precise ablations.
 - Discounting is intentionally simple: positive final reward is scaled by
   `discount ** revision_count`, while non-positive outcomes are left unchanged.
 

@@ -53,6 +53,9 @@ def main() -> int:
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--top-p", type=float, default=0.95)
+    parser.add_argument("--revision-max-new-tokens", type=int)
+    parser.add_argument("--revision-temperature", type=float)
+    parser.add_argument("--revision-top-p", type=float)
     args = parser.parse_args()
 
     registry = TaskRegistry.from_jsonl(args.tasks)
@@ -81,6 +84,9 @@ def main() -> int:
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,
             top_p=args.top_p,
+            revision_max_new_tokens=args.revision_max_new_tokens,
+            revision_temperature=args.revision_temperature,
+            revision_top_p=args.revision_top_p,
             use_rule_based_repair=_revision_strategy(args) == "rule_based",
             use_model_revision=_revision_strategy(args) == "model",
             revision_prompt_template=args.revision_prompt_template,

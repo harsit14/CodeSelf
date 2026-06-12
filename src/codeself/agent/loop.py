@@ -23,6 +23,9 @@ class AgentLoopConfig:
     max_new_tokens: int = 512
     temperature: float = 0.8
     top_p: float = 0.95
+    revision_max_new_tokens: int | None = None
+    revision_temperature: float | None = None
+    revision_top_p: float | None = None
     use_rule_based_repair: bool = True
     use_model_revision: bool = False
     revision_prompt_template: str = "self_debug_revision_v1"
@@ -32,11 +35,37 @@ class AgentLoopConfig:
             raise ValueError("max_revisions must be non-negative")
         if self.max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be positive")
+        if self.revision_max_new_tokens is not None and self.revision_max_new_tokens <= 0:
+            raise ValueError("revision_max_new_tokens must be positive when set")
         if self.temperature < 0:
             raise ValueError("temperature must be non-negative")
+        if self.revision_temperature is not None and self.revision_temperature < 0:
+            raise ValueError("revision_temperature must be non-negative when set")
         if not 0 < self.top_p <= 1:
             raise ValueError("top_p must be in (0, 1]")
+        if self.revision_top_p is not None and not 0 < self.revision_top_p <= 1:
+            raise ValueError("revision_top_p must be in (0, 1] when set")
         get_revision_prompt_template(self.revision_prompt_template)
+
+    @property
+    def resolved_revision_max_new_tokens(self) -> int:
+        return (
+            self.revision_max_new_tokens
+            if self.revision_max_new_tokens is not None
+            else self.max_new_tokens
+        )
+
+    @property
+    def resolved_revision_temperature(self) -> float:
+        return (
+            self.revision_temperature
+            if self.revision_temperature is not None
+            else self.temperature
+        )
+
+    @property
+    def resolved_revision_top_p(self) -> float:
+        return self.revision_top_p if self.revision_top_p is not None else self.top_p
 
 
 @dataclass(frozen=True)
@@ -184,6 +213,10 @@ class SelfDebugAgentLoop:
         generation_metadata: dict[str, str | int | float | bool] = {
             "backend": generation.backend,
             "model_name": generation.model_name,
+            "request_seed": self.config.seed,
+            "request_max_new_tokens": self.config.max_new_tokens,
+            "request_temperature": self.config.temperature,
+            "request_top_p": self.config.top_p,
             **generation.metadata,
         }
         steps: list[AgentStep] = [
@@ -247,6 +280,9 @@ class SelfDebugAgentLoop:
                 "use_rule_based_repair": self.config.use_rule_based_repair,
                 "use_model_revision": self.config.use_model_revision,
                 "revision_prompt_template": self.config.revision_prompt_template,
+                "revision_max_new_tokens": self.config.resolved_revision_max_new_tokens,
+                "revision_temperature": self.config.resolved_revision_temperature,
+                "revision_top_p": self.config.resolved_revision_top_p,
             },
         )
 
@@ -296,9 +332,9 @@ class SelfDebugAgentLoop:
                 prompt=prompt,
                 sample_index=revision_index,
                 seed=self.config.seed + revision_index,
-                max_new_tokens=self.config.max_new_tokens,
-                temperature=self.config.temperature,
-                top_p=self.config.top_p,
+                max_new_tokens=self.config.resolved_revision_max_new_tokens,
+                temperature=self.config.resolved_revision_temperature,
+                top_p=self.config.resolved_revision_top_p,
                 entry_point=task.entry_point,
             )
         )
@@ -308,6 +344,10 @@ class SelfDebugAgentLoop:
             "revision_prompt_template": self.revision_prompt_template.name,
             "revision_prompt": prompt,
             "raw_revision_completion": generation.text,
+            "revision_request_seed": self.config.seed + revision_index,
+            "revision_request_max_new_tokens": self.config.resolved_revision_max_new_tokens,
+            "revision_request_temperature": self.config.resolved_revision_temperature,
+            "revision_request_top_p": self.config.resolved_revision_top_p,
             "backend": generation.backend,
             "model_name": generation.model_name,
             **generation.metadata,

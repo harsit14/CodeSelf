@@ -66,6 +66,9 @@ def _summary_rows(algorithm: str, online_config: Any) -> tuple[tuple[str, object
         ("max_response_tokens", cycle.rollout.max_response_tokens),
         ("self_debug_revision_strategy", cycle.self_debug.revision_strategy),
         ("self_debug_max_revisions", cycle.self_debug.max_revisions),
+        ("self_debug_revision_max_new_tokens", cycle.self_debug.revision_max_new_tokens),
+        ("self_debug_revision_temperature", cycle.self_debug.revision_temperature),
+        ("self_debug_revision_top_p", cycle.self_debug.revision_top_p),
         ("evaluation_enabled", online_config.evaluation is not None),
         ("sync_old_policy_before_cycle", online_config.sync_old_policy_before_cycle),
     ]
@@ -77,6 +80,8 @@ def _summary_rows(algorithm: str, online_config: Any) -> tuple[tuple[str, object
 
 
 def _format_value(value: object) -> str:
+    if value is None:
+        return "inherit"
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (list, tuple)):

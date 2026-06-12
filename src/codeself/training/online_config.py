@@ -215,6 +215,30 @@ def _build_self_debug_config(config: dict[str, Any]) -> SelfDebugCollectionConfi
             "agent.revision_reward_discount",
             default=1.0,
         ),
+        revision_max_new_tokens=_optional_int_value(
+            _first_value(
+                config,
+                "self_debug.revision_max_new_tokens",
+                "agent.revision_max_new_tokens",
+                default=None,
+            )
+        ),
+        revision_temperature=_optional_float_value(
+            _first_value(
+                config,
+                "self_debug.revision_temperature",
+                "agent.revision_temperature",
+                default=None,
+            )
+        ),
+        revision_top_p=_optional_float_value(
+            _first_value(
+                config,
+                "self_debug.revision_top_p",
+                "agent.revision_top_p",
+                default=None,
+            )
+        ),
     )
 
 

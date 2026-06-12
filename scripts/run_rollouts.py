@@ -64,6 +64,9 @@ def main() -> int:
     parser.add_argument("--disable-rule-repair", action="store_true", default=None)
     parser.add_argument("--revision-strategy", choices=("rule_based", "model", "none"))
     parser.add_argument("--revision-prompt-template")
+    parser.add_argument("--revision-max-new-tokens", type=int)
+    parser.add_argument("--revision-temperature", type=float)
+    parser.add_argument("--revision-top-p", type=float)
     parser.add_argument("--revision-reward-discount", type=float)
     parser.add_argument(
         "--reward-mode",
@@ -225,6 +228,27 @@ def main() -> int:
                     default="self_debug_revision_v1",
                 )
             ),
+            revision_max_new_tokens=_optional_int(
+                _value(
+                    args.revision_max_new_tokens,
+                    config_get(config, "self_debug.revision_max_new_tokens"),
+                    default=None,
+                )
+            ),
+            revision_temperature=_optional_float(
+                _value(
+                    args.revision_temperature,
+                    config_get(config, "self_debug.revision_temperature"),
+                    default=None,
+                )
+            ),
+            revision_top_p=_optional_float(
+                _value(
+                    args.revision_top_p,
+                    config_get(config, "self_debug.revision_top_p"),
+                    default=None,
+                )
+            ),
             revision_reward_discount=float(
                 _value(
                     args.revision_reward_discount,
@@ -291,6 +315,18 @@ def _value(cli_value: Any, config_value: Any, *, default: Any) -> Any:
     if config_value is not None:
         return config_value
     return default
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
 
 
 def _revision_strategy(args, config: dict[str, Any]) -> str:

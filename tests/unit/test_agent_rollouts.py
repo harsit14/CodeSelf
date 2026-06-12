@@ -141,15 +141,19 @@ class AgentRolloutTests(unittest.TestCase):
         self.assertEqual(result.analysis.final_pass_rate, 1.0)
 
     def test_generate_self_debug_rollouts_can_use_model_revision(self) -> None:
+        generator = _TwoStageRevisionGenerator()
         result = generate_self_debug_rollouts(
             [_task()],
-            generator=_TwoStageRevisionGenerator(),
+            generator=generator,
             prompt_template=DIRECT_SOLUTION_TEMPLATE,
             samples_per_task=1,
             seed=3,
             max_new_tokens=128,
             temperature=0.0,
             top_p=1.0,
+            revision_max_new_tokens=32,
+            revision_temperature=0.3,
+            revision_top_p=0.8,
             include_hidden=True,
             max_revisions=1,
             use_rule_based_repair=False,
@@ -161,7 +165,12 @@ class AgentRolloutTests(unittest.TestCase):
         self.assertTrue(record.execution["passed"])
         self.assertEqual(record.metadata["revision_strategy"], "model")
         self.assertEqual(record.metadata["revision_count"], 1)
+        self.assertEqual(record.metadata["revision_max_new_tokens"], 32)
+        self.assertEqual(record.metadata["revision_temperature"], 0.3)
+        self.assertEqual(record.metadata["revision_top_p"], 0.8)
         self.assertEqual(record.generation_metadata["stage"], "initial")
+        self.assertEqual(result.config.resolved_revision_max_new_tokens, 32)
+        self.assertEqual(generator.requests[1].max_new_tokens, 32)
 
     def test_rollout_jsonl_round_trip(self) -> None:
         records = generate_rollouts(
@@ -251,6 +260,12 @@ class AgentRolloutTests(unittest.TestCase):
                     "1",
                     "--max-revisions",
                     "1",
+                    "--revision-max-new-tokens",
+                    "33",
+                    "--revision-temperature",
+                    "0.25",
+                    "--revision-top-p",
+                    "0.8",
                     "--revision-reward-discount",
                     "0.5",
                 ],
@@ -272,8 +287,12 @@ class AgentRolloutTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(records[0]["metadata"]["rollout_mode"], "self_debug")
         self.assertEqual(records[0]["metadata"]["revision_count"], 1)
+        self.assertEqual(records[0]["metadata"]["revision_max_new_tokens"], 33)
+        self.assertEqual(records[0]["metadata"]["revision_temperature"], 0.25)
+        self.assertEqual(records[0]["metadata"]["revision_top_p"], 0.8)
         self.assertEqual(records[0]["reward"]["reward"], 0.5)
         self.assertEqual(len(traces), 1)
+        self.assertEqual(traces[0]["metadata"]["revision_max_new_tokens"], 33)
         self.assertIn("rollout_mode: self_debug", completed.stdout)
         self.assertIn("self_debug_revision_rate: 1.0000", completed.stdout)
 
@@ -395,7 +414,11 @@ class _TwoStageRevisionGenerator(CodeGenerator):
     backend_name = "unit"
     model_name = "two-stage-revision"
 
+    def __init__(self) -> None:
+        self.requests: list[GenerationRequest] = []
+
     def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.requests.append(request)
         if "Public-test feedback:" in request.prompt:
             completion = "```python\ndef add_one(x):\n    return x + 1\n```"
             stage = "revision"

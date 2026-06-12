@@ -45,6 +45,9 @@ class OnlineTrainingConfigBuilderTests(unittest.TestCase):
                 "revision_strategy": "model",
                 "revision_prompt_template": "self_debug_revision_v2",
                 "revision_reward_discount": 0.75,
+                "revision_max_new_tokens": 96,
+                "revision_temperature": 0.25,
+                "revision_top_p": 0.85,
             },
             "execution": {"include_hidden": False},
             "batch": {
@@ -91,8 +94,14 @@ class OnlineTrainingConfigBuilderTests(unittest.TestCase):
         self.assertEqual(built.cycle.rollout_mode, "self_debug")
         self.assertEqual(built.cycle.rollout.samples_per_task, 4)
         self.assertEqual(built.cycle.self_debug.revision_strategy, "model")
-        self.assertEqual(built.cycle.self_debug.revision_prompt_template, "self_debug_revision_v2")
+        self.assertEqual(
+            built.cycle.self_debug.revision_prompt_template,
+            "self_debug_revision_v2",
+        )
         self.assertAlmostEqual(built.cycle.self_debug.revision_reward_discount, 0.75)
+        self.assertEqual(built.cycle.self_debug.revision_max_new_tokens, 96)
+        self.assertAlmostEqual(built.cycle.self_debug.revision_temperature, 0.25)
+        self.assertAlmostEqual(built.cycle.self_debug.revision_top_p, 0.85)
         self.assertFalse(built.cycle.include_hidden)
         self.assertEqual(built.cycle.batch.response_source, "parsed_code")
         self.assertFalse(built.cycle.batch.include_failed_parses)
