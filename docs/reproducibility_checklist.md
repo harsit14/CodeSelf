@@ -16,6 +16,8 @@ rerun real GRPO/PPO experiments after model-training dependencies are installed.
 - [ ] Run `scripts/train_ppo_smoke.py`.
 - [ ] Compare smoke metrics with `scripts/compare_training_smoke.py`.
 - [ ] Create a manifest with `scripts/make_reproducibility_manifest.py`.
+- [ ] Confirm the manifest contains config, dataset/split, environment,
+  model-reference, and checkpoint-manifest sections.
 
 ## Required Experiment Metadata
 
@@ -23,20 +25,22 @@ rerun real GRPO/PPO experiments after model-training dependencies are installed.
 - [ ] Git dirty/untracked status.
 - [ ] Python version.
 - [ ] Package version.
-- [ ] Model name and exact revision.
-- [ ] Tokenizer name and exact revision.
+- [ ] Model name and exact revision, as reported in `model_references`.
+- [ ] Tokenizer name and exact revision, as reported in `model_references`.
 - [ ] Adapter checkpoint checksum.
 - [ ] Dataset source and license notes.
-- [ ] Split manifest checksum.
-- [ ] Prompt template name and hash.
-- [ ] Reward version and config hash.
+- [ ] Dataset task and split manifest checksum in `dataset_artifacts`.
+- [ ] Prompt template name and config hash in `config_artifacts`.
+- [ ] Reward version and reward config hash in `config_artifacts`.
 - [ ] Sandbox image or executor hash.
-- [ ] Training config.
-- [ ] Evaluation config.
+- [ ] Training config hash in `config_artifacts`.
+- [ ] Evaluation config hash in `config_artifacts`.
 - [ ] Random seeds.
 - [ ] Hardware type, GPU count, CPU count, memory, and wall-clock time.
 - [ ] Raw rollout JSONL files.
 - [ ] Final paired statistical report.
+- [ ] Checkpoint manifest hash and nested checkpoint artifact hashes in
+  `checkpoint_manifests` and `checkpoint_artifacts`.
 
 ## Pretraining And Fine-Tuning Controls
 
@@ -58,5 +62,7 @@ python3 scripts/make_reproducibility_manifest.py \
 ```
 
 The archive contains public project files plus a manifest of SHA-256 checksums.
-Private datasets, hidden tests, model checkpoints, and raw rollouts should be
-stored in a separate controlled archive when they cannot be published.
+The manifest separately summarizes experiment configs, dataset/split artifacts,
+environment lockfiles, model references, and checkpoint manifests. Private
+datasets, hidden tests, model checkpoints, and raw rollouts should be stored in
+a separate controlled archive when they cannot be published.

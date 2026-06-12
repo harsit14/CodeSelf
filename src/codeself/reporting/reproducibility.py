@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from codeself.config import ConfigLoadError, config_get, load_config_file
+
 
 DEFAULT_INCLUDE_PATTERNS = (
     ".gitignore",
@@ -52,6 +54,47 @@ DEFAULT_EXCLUDE_PATTERNS = (
     "progress.md",
 )
 
+GROUP_EXCLUDE_PATTERNS = (
+    ".git/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+    ".mypy_cache/**",
+    ".pytest_cache/**",
+    ".ruff_cache/**",
+    ".venv/**",
+    "venv/**",
+)
+
+CONFIG_HASH_PATTERNS = (
+    "configs/**/*.json",
+    "configs/**/*.jsonl",
+    "configs/**/*.yaml",
+    "configs/**/*.yml",
+)
+
+DATASET_VERSION_PATTERNS = (
+    "configs/datasets/**",
+    "data/splits/**",
+)
+
+ENVIRONMENT_LOCKFILE_PATTERNS = (
+    "pyproject.toml",
+    "requirements*.txt",
+    "requirements/**/*.txt",
+    "uv.lock",
+    "poetry.lock",
+    "pdm.lock",
+    "conda*.yml",
+    "environment*.yml",
+    "docker/**",
+)
+
+CHECKPOINT_MANIFEST_PATTERNS = (
+    "outputs/checkpoints/**/checkpoint*.json",
+    "outputs/checkpoints/**/checkpoint_manifest.json",
+    "artifacts/**/checkpoint*.json",
+)
+
 
 @dataclass(frozen=True)
 class FileArtifact:
@@ -78,6 +121,50 @@ class CommandSpec:
 
 
 @dataclass(frozen=True)
+class ModelReference:
+    """Model/tokenizer reference extracted from an experiment config."""
+
+    source_path: str
+    config_path: str
+    role: str
+    name: str
+    tokenizer: str | None = None
+    revision: str | None = None
+    tokenizer_revision: str | None = None
+
+    def to_dict(self) -> dict[str, str | None]:
+        return {
+            "source_path": self.source_path,
+            "config_path": self.config_path,
+            "role": self.role,
+            "name": self.name,
+            "tokenizer": self.tokenizer,
+            "revision": self.revision,
+            "tokenizer_revision": self.tokenizer_revision,
+        }
+
+
+@dataclass(frozen=True)
+class CheckpointArtifactReference:
+    """Checkpoint artifact checksum copied from a checkpoint manifest."""
+
+    source_path: str
+    kind: str
+    path: str
+    bytes: int | None
+    sha256: str
+
+    def to_dict(self) -> dict[str, str | int | None]:
+        return {
+            "source_path": self.source_path,
+            "kind": self.kind,
+            "path": self.path,
+            "bytes": self.bytes,
+            "sha256": self.sha256,
+        }
+
+
+@dataclass(frozen=True)
 class ReproducibilityManifest:
     """Public metadata needed to reproduce a CodeSelf run."""
 
@@ -90,6 +177,12 @@ class ReproducibilityManifest:
     git_status_short: tuple[str, ...]
     artifact_count: int
     artifacts: tuple[FileArtifact, ...]
+    config_artifacts: tuple[FileArtifact, ...]
+    dataset_artifacts: tuple[FileArtifact, ...]
+    environment_artifacts: tuple[FileArtifact, ...]
+    checkpoint_manifests: tuple[FileArtifact, ...]
+    checkpoint_artifacts: tuple[CheckpointArtifactReference, ...]
+    model_references: tuple[ModelReference, ...]
     commands: tuple[CommandSpec, ...]
     notes: tuple[str, ...]
 
@@ -104,6 +197,28 @@ class ReproducibilityManifest:
             "git_status_short": list(self.git_status_short),
             "artifact_count": self.artifact_count,
             "artifacts": [artifact.to_dict() for artifact in self.artifacts],
+            "config_artifact_count": len(self.config_artifacts),
+            "config_artifacts": [artifact.to_dict() for artifact in self.config_artifacts],
+            "dataset_artifact_count": len(self.dataset_artifacts),
+            "dataset_artifacts": [
+                artifact.to_dict() for artifact in self.dataset_artifacts
+            ],
+            "environment_artifact_count": len(self.environment_artifacts),
+            "environment_artifacts": [
+                artifact.to_dict() for artifact in self.environment_artifacts
+            ],
+            "checkpoint_manifest_count": len(self.checkpoint_manifests),
+            "checkpoint_manifests": [
+                artifact.to_dict() for artifact in self.checkpoint_manifests
+            ],
+            "checkpoint_artifact_count": len(self.checkpoint_artifacts),
+            "checkpoint_artifacts": [
+                artifact.to_dict() for artifact in self.checkpoint_artifacts
+            ],
+            "model_reference_count": len(self.model_references),
+            "model_references": [
+                reference.to_dict() for reference in self.model_references
+            ],
             "commands": [command.to_dict() for command in self.commands],
             "notes": list(self.notes),
         }
@@ -121,6 +236,14 @@ class ReproducibilityManifest:
             f"- `{artifact.path}` ({artifact.bytes} bytes, sha256 `{artifact.sha256}`)"
             for artifact in self.artifacts
         )
+        configs = _artifact_markdown(self.config_artifacts)
+        datasets = _artifact_markdown(self.dataset_artifacts)
+        environment = _artifact_markdown(self.environment_artifacts)
+        checkpoints = _checkpoint_markdown(
+            self.checkpoint_manifests,
+            self.checkpoint_artifacts,
+        )
+        models = _model_reference_markdown(self.model_references)
         notes = "\n".join(f"- {note}" for note in self.notes)
         return (
             "# CodeSelf Reproducibility Manifest\n\n"
@@ -136,6 +259,16 @@ class ReproducibilityManifest:
             f"{commands}\n\n"
             "## Artifacts\n\n"
             f"{artifacts}\n\n"
+            "## Experiment Config Hashes\n\n"
+            f"{configs}\n\n"
+            "## Dataset And Split Artifacts\n\n"
+            f"{datasets}\n\n"
+            "## Environment Lockfiles\n\n"
+            f"{environment}\n\n"
+            "## Model References\n\n"
+            f"{models}\n\n"
+            "## Checkpoint Manifests\n\n"
+            f"{checkpoints}\n\n"
             "## Notes\n\n"
             f"{notes}\n"
         )
@@ -153,7 +286,10 @@ def default_reproduction_commands() -> tuple[CommandSpec, ...]:
         CommandSpec(
             name="Run unit tests",
             command="python3 -m unittest discover -s tests",
-            purpose="Exercises dataset loading, sandbox execution, rewards, rollouts, training smoke tests, and reports.",
+            purpose=(
+                "Exercises dataset loading, sandbox execution, rewards, rollouts, "
+                "training smoke tests, and reports."
+            ),
         ),
         CommandSpec(
             name="Generate mock rollouts",
@@ -166,24 +302,34 @@ def default_reproduction_commands() -> tuple[CommandSpec, ...]:
         CommandSpec(
             name="Evaluate rollouts",
             command=(
-                "python3 scripts/evaluate_rollouts.py --rollouts outputs/rollouts/mock_smoke.jsonl "
-                "--output outputs/reports/mock_baseline.md --power-output outputs/reports/mock_power.json"
+                "python3 scripts/evaluate_rollouts.py --rollouts "
+                "outputs/rollouts/mock_smoke.jsonl "
+                "--output outputs/reports/mock_baseline.md "
+                "--power-output outputs/reports/mock_power.json"
             ),
-            purpose="Summarizes pass@k, parser failures, reward statistics, and power-planning diagnostics.",
+            purpose=(
+                "Summarizes pass@k, parser failures, reward statistics, and "
+                "power-planning diagnostics."
+            ),
         ),
         CommandSpec(
             name="Run GRPO smoke diagnostics",
             command=(
                 "python3 scripts/train_grpo_smoke.py --tasks configs/datasets/tasks.example.jsonl "
-                "--output-dir outputs/checkpoints/grpo_smoke_example --backend mock --group-size 4 --max-steps 3"
+                "--output-dir outputs/checkpoints/grpo_smoke_example "
+                "--backend mock --group-size 4 --max-steps 3"
             ),
-            purpose="Validates grouped reward advantages and checkpoint/report plumbing without model fine-tuning.",
+            purpose=(
+                "Validates grouped reward advantages and checkpoint/report plumbing "
+                "without model fine-tuning."
+            ),
         ),
         CommandSpec(
             name="Run PPO smoke diagnostics",
             command=(
                 "python3 scripts/train_ppo_smoke.py --tasks configs/datasets/tasks.example.jsonl "
-                "--output-dir outputs/checkpoints/ppo_smoke_example --backend mock --samples-per-task 4 --max-steps 3"
+                "--output-dir outputs/checkpoints/ppo_smoke_example "
+                "--backend mock --samples-per-task 4 --max-steps 3"
             ),
             purpose="Validates value-baseline PPO diagnostics and matched-budget report plumbing.",
         ),
@@ -205,7 +351,10 @@ def default_reproduction_commands() -> tuple[CommandSpec, ...]:
                 "--markdown-output outputs/reports/reproducibility_manifest.md "
                 "--archive outputs/reports/codeself_reproducibility.tar.gz"
             ),
-            purpose="Records artifact checksums, environment metadata, git status, and rerun commands.",
+            purpose=(
+                "Records artifact checksums, environment metadata, git status, "
+                "and rerun commands."
+            ),
         ),
     )
 
@@ -252,8 +401,14 @@ def build_reproducibility_manifest(
     """Build a manifest for the current repository state."""
 
     root_path = Path(root).resolve()
-    generated_at = generated_at_utc or datetime.now(timezone.utc).isoformat(timespec="seconds")
+    generated_at = (
+        generated_at_utc or datetime.now(timezone.utc).isoformat(timespec="seconds")
+    )
     artifacts = collect_artifacts(root_path)
+    config_artifacts = _collect_file_group(root_path, CONFIG_HASH_PATTERNS)
+    dataset_artifacts = _collect_file_group(root_path, DATASET_VERSION_PATTERNS)
+    environment_artifacts = _collect_file_group(root_path, ENVIRONMENT_LOCKFILE_PATTERNS)
+    checkpoint_manifests = _collect_file_group(root_path, CHECKPOINT_MANIFEST_PATTERNS)
     return ReproducibilityManifest(
         generated_at_utc=generated_at,
         project_name="CodeSelf",
@@ -264,11 +419,30 @@ def build_reproducibility_manifest(
         git_status_short=tuple(_git_status(root_path)),
         artifact_count=len(artifacts),
         artifacts=artifacts,
+        config_artifacts=config_artifacts,
+        dataset_artifacts=dataset_artifacts,
+        environment_artifacts=environment_artifacts,
+        checkpoint_manifests=checkpoint_manifests,
+        checkpoint_artifacts=_checkpoint_artifact_references(root_path, checkpoint_manifests),
+        model_references=_model_references(root_path, config_artifacts),
         commands=default_reproduction_commands(),
         notes=(
-            "Smoke commands use dependency-free mock generation and do not fine-tune model weights.",
-            "Real training artifacts must add model revision, tokenizer revision, adapter checksum, hardware, and run seeds.",
-            "Private hidden tests should be archived separately and never embedded in prompts or public rollouts.",
+            (
+                "Smoke commands use dependency-free mock generation; they do not "
+                "fine-tune model weights."
+            ),
+            (
+                "Model/tokenizer references are parsed from configs; pin exact remote "
+                "revisions before paper-grade runs."
+            ),
+            (
+                "Checkpoint artifact hashes are copied from checkpoint manifests when "
+                "those manifests exist."
+            ),
+            (
+                "Private hidden tests should be archived separately and never embedded "
+                "in prompts or public rollouts."
+            ),
         ),
     )
 
@@ -305,6 +479,191 @@ def write_reproducibility_archive(
             source = root_path / artifact.path
             if source.exists():
                 archive.add(source, arcname=f"codeself_reproducibility/{artifact.path}")
+
+
+def _collect_file_group(
+    root: Path,
+    include_patterns: Iterable[str],
+    exclude_patterns: Iterable[str] = GROUP_EXCLUDE_PATTERNS,
+) -> tuple[FileArtifact, ...]:
+    artifacts: list[FileArtifact] = []
+    include = tuple(include_patterns)
+    exclude = tuple(exclude_patterns)
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if _matches_any(relative, exclude):
+            continue
+        if not _matches_any(relative, include):
+            continue
+        artifacts.append(
+            FileArtifact(path=relative, bytes=path.stat().st_size, sha256=sha256_file(path))
+        )
+    return tuple(artifacts)
+
+
+def _model_references(
+    root: Path,
+    config_artifacts: tuple[FileArtifact, ...],
+) -> tuple[ModelReference, ...]:
+    references: list[ModelReference] = []
+    seen: set[tuple[str, str, str]] = set()
+    for artifact in config_artifacts:
+        path = root / artifact.path
+        try:
+            config = load_config_file(path)
+        except (ConfigLoadError, OSError, UnicodeDecodeError):
+            continue
+        for reference in _model_references_for_config(artifact.path, config):
+            identity = (reference.source_path, reference.config_path, reference.role)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            references.append(reference)
+    return tuple(references)
+
+
+def _model_references_for_config(
+    source_path: str,
+    config: dict[str, Any],
+) -> tuple[ModelReference, ...]:
+    references: list[ModelReference] = []
+    model = config_get(config, "model")
+    if isinstance(model, dict):
+        role = "policy" if _looks_like_training_model_block(model) else "model"
+        references.extend(_reference_from_mapping(source_path, "model", role, model))
+        value_model = model.get("value_model")
+        if isinstance(value_model, dict):
+            references.extend(
+                _reference_from_mapping(
+                    source_path,
+                    "model.value_model",
+                    "value_model",
+                    value_model,
+                )
+            )
+    generation = config_get(config, "generation")
+    if isinstance(generation, dict):
+        references.extend(
+            _reference_from_mapping(source_path, "generation", "generation", generation)
+        )
+    return tuple(references)
+
+
+def _reference_from_mapping(
+    source_path: str,
+    config_path: str,
+    role: str,
+    value: dict[str, Any],
+) -> tuple[ModelReference, ...]:
+    name = value.get("name") or value.get("model_name_or_path") or value.get("model")
+    tokenizer = value.get("tokenizer")
+    if name is None and tokenizer is None:
+        return ()
+    return (
+        ModelReference(
+            source_path=source_path,
+            config_path=config_path,
+            role=role,
+            name=str(name or tokenizer),
+            tokenizer=None if tokenizer is None else str(tokenizer),
+            revision=_optional_str(value.get("revision")),
+            tokenizer_revision=_optional_str(value.get("tokenizer_revision")),
+        ),
+    )
+
+
+def _looks_like_training_model_block(value: dict[str, Any]) -> bool:
+    return any(
+        key in value
+        for key in (
+            "backend",
+            "full_finetune",
+            "use_lora",
+            "value_model",
+            "old_policy",
+            "reference",
+        )
+    )
+
+
+def _checkpoint_artifact_references(
+    root: Path,
+    checkpoint_manifests: tuple[FileArtifact, ...],
+) -> tuple[CheckpointArtifactReference, ...]:
+    references: list[CheckpointArtifactReference] = []
+    for artifact in checkpoint_manifests:
+        path = root / artifact.path
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        for item in payload.get("artifacts", ()):
+            if not isinstance(item, dict):
+                continue
+            sha256 = item.get("sha256")
+            item_path = item.get("path")
+            if not isinstance(sha256, str) or not isinstance(item_path, str):
+                continue
+            bytes_value = item.get("bytes")
+            references.append(
+                CheckpointArtifactReference(
+                    source_path=artifact.path,
+                    kind=str(item.get("kind", "artifact")),
+                    path=item_path,
+                    bytes=bytes_value if isinstance(bytes_value, int) else None,
+                    sha256=sha256,
+                )
+            )
+    return tuple(references)
+
+
+def _artifact_markdown(artifacts: tuple[FileArtifact, ...]) -> str:
+    if not artifacts:
+        return "- none"
+    return "\n".join(
+        f"- `{artifact.path}` ({artifact.bytes} bytes, sha256 `{artifact.sha256}`)"
+        for artifact in artifacts
+    )
+
+
+def _model_reference_markdown(references: tuple[ModelReference, ...]) -> str:
+    if not references:
+        return "- none"
+    lines: list[str] = []
+    for reference in references:
+        revision = reference.revision or "unpinned"
+        tokenizer = reference.tokenizer or reference.name
+        tokenizer_revision = reference.tokenizer_revision or "unpinned"
+        lines.append(
+            f"- `{reference.source_path}` `{reference.config_path}` "
+            f"({reference.role}): model `{reference.name}` @ `{revision}`, "
+            f"tokenizer `{tokenizer}` @ `{tokenizer_revision}`"
+        )
+    return "\n".join(lines)
+
+
+def _checkpoint_markdown(
+    manifests: tuple[FileArtifact, ...],
+    artifacts: tuple[CheckpointArtifactReference, ...],
+) -> str:
+    if not manifests and not artifacts:
+        return "- none"
+    lines = [
+        f"- manifest `{manifest.path}` ({manifest.bytes} bytes, sha256 `{manifest.sha256}`)"
+        for manifest in manifests
+    ]
+    lines.extend(
+        f"- `{artifact.kind}` from `{artifact.source_path}`: `{artifact.path}` "
+        f"(sha256 `{artifact.sha256}`)"
+        for artifact in artifacts
+    )
+    return "\n".join(lines)
+
+
+def _optional_str(value: object) -> str | None:
+    return None if value is None else str(value)
 
 
 def _matches_any(path: str, patterns: Iterable[str]) -> bool:

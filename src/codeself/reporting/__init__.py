@@ -1,8 +1,10 @@
 """Reporting and reproducibility helpers."""
 
 from codeself.reporting.reproducibility import (
+    CheckpointArtifactReference,
     CommandSpec,
     FileArtifact,
+    ModelReference,
     ReproducibilityManifest,
     build_reproducibility_manifest,
     collect_artifacts,
@@ -15,7 +17,9 @@ from codeself.reporting.reproducibility import (
 
 __all__ = [
     "CommandSpec",
+    "CheckpointArtifactReference",
     "FileArtifact",
+    "ModelReference",
     "ReproducibilityManifest",
     "build_reproducibility_manifest",
     "collect_artifacts",

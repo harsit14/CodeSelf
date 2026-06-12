@@ -30,6 +30,12 @@ def main() -> int:
     write_manifest_json(manifest, args.output)
     print(f"wrote reproducibility manifest to {args.output}")
     print(f"artifact_count: {manifest.artifact_count}")
+    print(f"config_artifact_count: {len(manifest.config_artifacts)}")
+    print(f"dataset_artifact_count: {len(manifest.dataset_artifacts)}")
+    print(f"environment_artifact_count: {len(manifest.environment_artifacts)}")
+    print(f"model_reference_count: {len(manifest.model_references)}")
+    print(f"checkpoint_manifest_count: {len(manifest.checkpoint_manifests)}")
+    print(f"checkpoint_artifact_count: {len(manifest.checkpoint_artifacts)}")
 
     if args.markdown_output is not None:
         write_manifest_markdown(manifest, args.markdown_output)

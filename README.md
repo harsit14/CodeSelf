@@ -1,50 +1,70 @@
 # CodeSelf
 
-CodeSelf is a research scaffold for studying execution-feedback reinforcement
-learning on coding tasks. It focuses on a bounded question: can a coding model
-improve on a declared Python task distribution after practicing with sandboxed
-test feedback?
+CodeSelf is a research scaffold for execution-feedback reinforcement learning
+on Python coding tasks. The central question is deliberately bounded: can a
+coding policy improve on a declared task distribution after practicing against
+sandboxed tests and structured feedback?
 
-The repository includes the infrastructure needed to run the smoke pipeline end
-to end: dataset conversion, sandboxed execution, correctness-first rewards,
-rollout records, baseline evaluation, GRPO/PPO diagnostics, paired statistical
-testing, agentic self-debug traces, and reproducibility manifests.
+The repository now contains an end-to-end local research loop:
 
-This is not a released trained model. The GRPO and PPO trainers in this public
-version are dependency-free smoke scaffolds that validate the research workflow
-without updating model weights.
+- canonical task ingestion with public and hidden tests;
+- sandboxed execution and correctness-first reward modes;
+- direct and self-debug rollout generation;
+- GRPO and PPO objectives with Torch-backed model-training paths;
+- online collect -> execute -> score -> optimize cycles;
+- Transformers launch templates with LoRA, PPO value heads, and separate PPO
+  critic support;
+- evaluation reports, paired statistics, and static HTML dashboards;
+- reproducibility manifests with config, dataset, environment, model, and
+  checkpoint metadata.
 
-## What Is Included
+This is still a scaffold, not a released trained model. The dependency-free
+smoke path is meant to stay fast and reviewable, while optional training
+dependencies unlock tiny/local model integration and single-GPU experiments.
 
-- Canonical task schema with public/hidden tests and deterministic split helpers.
-- MBPP-style, HumanEval/EvalPlus-style, and canonical JSONL dataset loaders.
-- Conservative Python security scan plus subprocess execution runner.
-- Task runner with syntax, import, public-test, and hidden-test phases.
-- `reward_v0_correctness`, a correctness-first reward with quality and efficiency diagnostics.
-- Prompt templates, code parsing, mock/static/local generation backends, and rollout JSONL files.
-- Baseline evaluation with pass@k, parser failure rate, reward stats, and power-planning diagnostics.
-- GRPO smoke diagnostics with grouped reward advantages and informative-prompt tracking.
-- PPO smoke diagnostics with value-baseline advantages and clipping diagnostics.
-- Final paired comparison tools with exact McNemar/binomial tests and bootstrap intervals.
-- Agentic self-debug loop traces for public-test use, revision behavior, and final submission.
-- Reproducibility checklist, model-card template, dataset-card template, and manifest/archive tool.
+## Architecture
+
+```text
+Task JSONL
+  -> prompt template
+  -> generator or shared policy engine
+  -> sandboxed execution
+  -> reward scorer
+  -> rollout JSONL and optional self-debug traces
+  -> GRPO/PPO batch builder
+  -> model-aware optimizer step
+  -> cycle artifacts, evaluation reports, dashboards, manifests
+```
+
+Core packages:
+
+```text
+src/codeself/datasets/      Task schema, loaders, split manifests, quality checks.
+src/codeself/execution/     Static scan, subprocess runner, Docker runner scaffold.
+src/codeself/rewards/       Correctness and configurable reward modes.
+src/codeself/agent/         Prompting, parsing, rollouts, self-debug traces.
+src/codeself/training/      Common records, GRPO/PPO losses, online training loops.
+src/codeself/evaluation/    pass@k, paired stats, learning curves, dashboard renderer.
+src/codeself/reporting/     Reproducibility manifest and archive helpers.
+```
 
 ## Repository Layout
 
 ```text
-configs/       Example dataset, model, reward, and experiment configs.
-data/          Local dataset placeholders; raw/processed data is git-ignored.
-docker/        Final-evaluation executor scaffold.
-docs/          Reproducibility, model-card, dataset-card, and safety docs.
-outputs/       Local rollout/checkpoint/report placeholders; generated files are git-ignored.
+configs/       Dataset, reward, model, rollout, online training, and eval examples.
+data/          Local dataset placeholders; raw and processed data are git-ignored.
+docker/        Container execution scaffold for locked-down evaluation.
+docs/          Reproducibility, model-card, dataset-card, plan, and safety docs.
+outputs/       Local rollout/checkpoint/report placeholders; generated files are ignored.
 scripts/       Command-line entry points for the pipeline.
-src/codeself/  Python package for datasets, execution, rewards, agents, training, and reporting.
-tests/         Unit tests for the public smoke implementation.
+src/           CodeSelf Python package.
+tests/         Unit tests for smoke, training, evaluation, launcher, and reporting paths.
+blog/          Milestone implementation log, force-added when a milestone ships.
 ```
 
 ## Quick Start
 
-Use Python 3.11 or newer. The smoke pipeline has no required third-party
+Use Python 3.11 or newer. The smoke path has no required third-party
 dependencies.
 
 ```bash
@@ -57,7 +77,7 @@ Validate the bundled example task:
 python3 scripts/validate_task_schema.py configs/datasets/tasks.example.jsonl
 ```
 
-Generate and evaluate mock rollouts:
+Generate and evaluate direct mock rollouts:
 
 ```bash
 python3 scripts/run_rollouts.py \
@@ -72,7 +92,22 @@ python3 scripts/evaluate_rollouts.py \
   --power-output outputs/reports/mock_power.json
 ```
 
-Run GRPO and PPO smoke diagnostics:
+Run self-debug rollouts with trace output:
+
+```bash
+python3 scripts/run_rollouts.py \
+  --tasks configs/datasets/tasks.example.jsonl \
+  --output outputs/rollouts/self_debug_smoke.jsonl \
+  --rollout-mode self_debug \
+  --trace-output outputs/reports/self_debug_traces.jsonl \
+  --backend mock \
+  --samples-per-task 2 \
+  --max-revisions 1
+```
+
+## Training Paths
+
+Fast smoke diagnostics remain available:
 
 ```bash
 python3 scripts/train_grpo_smoke.py \
@@ -88,61 +123,73 @@ python3 scripts/train_ppo_smoke.py \
   --backend mock \
   --samples-per-task 4 \
   --max-steps 3
-
-python3 scripts/compare_training_smoke.py \
-  --grpo-metrics outputs/checkpoints/grpo_smoke_example/metrics.jsonl \
-  --ppo-metrics outputs/checkpoints/ppo_smoke_example/metrics.jsonl \
-  --output outputs/reports/ppo_vs_grpo_report.md
 ```
 
-## Dataset Conversion
-
-Convert a local MBPP-style file into the canonical CodeSelf task format:
+Typed online training configs can be inspected without loading model weights:
 
 ```bash
-python3 scripts/prepare_datasets.py \
-  --format mbpp \
-  --input path/to/mbpp.json \
-  --output data/processed/mbpp.codeself.jsonl \
-  --assign-splits \
-  --manifest data/splits/mbpp.manifest.json
+python3 scripts/inspect_online_training_config.py \
+  --config configs/experiments/grpo_online_self_debug.example.yaml
+
+python3 scripts/inspect_online_training_config.py \
+  --config configs/experiments/ppo_online_transformers_separate_value.example.yaml
 ```
 
-Hidden tests should be stored outside prompts and starter code. The validation
-script checks for common leakage mistakes in canonical task files.
-
-## Agentic Traces
-
-Run the self-debug smoke loop with public-test feedback:
+The single-config launcher is:
 
 ```bash
-python3 scripts/run_agentic.py \
-  --tasks configs/datasets/tasks.example.jsonl \
-  --trace-output outputs/reports/agentic_traces.jsonl \
-  --report-output outputs/reports/agentic_strategy_report.md \
-  --backend mock \
-  --max-revisions 1
+python3 scripts/run_online_training.py \
+  --config configs/experiments/ppo_online_toy_launch.example.yaml
 ```
 
-Render one trace:
+For real local model experiments, start from:
+
+```text
+configs/experiments/grpo_online_transformers_launch.example.yaml
+configs/experiments/ppo_online_transformers_launch.example.yaml
+configs/experiments/ppo_online_transformers_separate_value.example.yaml
+```
+
+Those templates assume cached Hugging Face weights, Apple Silicon-friendly
+`mps`/`fp16` defaults, and LoRA enabled. Pin exact model and tokenizer revisions
+before treating any run as reproducible.
+
+## Evaluation And Dashboarding
+
+Evaluate rollout files:
 
 ```bash
-python3 scripts/view_agent_trace.py \
-  --traces outputs/reports/agentic_traces.jsonl \
-  --output outputs/reports/agent_trace.md
+python3 scripts/evaluate_rollouts.py \
+  --rollouts outputs/rollouts/mock_smoke.jsonl \
+  --output outputs/reports/mock_eval.md \
+  --json-output outputs/reports/mock_eval.json \
+  --group-by metadata.rollout_mode
 ```
+
+Compare two rollout files with paired statistics:
+
+```bash
+python3 scripts/compare_rollouts.py \
+  --baseline outputs/rollouts/baseline.jsonl \
+  --candidate outputs/rollouts/candidate.jsonl \
+  --output outputs/reports/comparison.md \
+  --json-output outputs/reports/comparison.json
+```
+
+Render a portable dashboard:
+
+```bash
+python3 scripts/render_evaluation_dashboard.py \
+  --evaluation baseline=outputs/reports/mock_eval.json \
+  --output outputs/reports/dashboard.html
+```
+
+Online training artifact directories can also be passed as learning curves with
+`--curve label=artifacts/run_name`.
 
 ## Reproducibility
 
-The public methodology is in [methodology.md](./methodology.md). Additional
-release documents are in [docs/](./docs):
-
-- [Reproducibility checklist](./docs/reproducibility_checklist.md)
-- [Adapter model-card template](./docs/model_card_adapters.md)
-- [Private task dataset-card template](./docs/dataset_card_private_tasks.md)
-- [Limitations and safety notes](./docs/limitations_and_safety.md)
-
-Create a reproducibility manifest and archive for the public project surface:
+Generate the public reproducibility manifest:
 
 ```bash
 python3 scripts/make_reproducibility_manifest.py \
@@ -151,17 +198,42 @@ python3 scripts/make_reproducibility_manifest.py \
   --archive outputs/reports/codeself_reproducibility.tar.gz
 ```
 
-## Optional Training Dependencies
+The manifest records:
 
-The `training` extra in `pyproject.toml` lists libraries expected for future
-real model training, including Transformers, TRL, PEFT, Accelerate, and vLLM.
-Those dependencies are not required for the smoke pipeline.
+- git revision and dirty status;
+- public source/config artifact hashes;
+- experiment config hashes;
+- dataset and split artifact hashes;
+- environment lockfiles such as `pyproject.toml`;
+- model/tokenizer references parsed from configs;
+- checkpoint manifest hashes and checkpoint artifact checksums when present;
+- rerun commands for the smoke pipeline.
+
+Release-facing documents:
+
+- [Reproducibility checklist](./docs/reproducibility_checklist.md)
+- [Adapter model-card template](./docs/model_card_adapters.md)
+- [Private task dataset-card template](./docs/dataset_card_private_tasks.md)
+- [Limitations and safety notes](./docs/limitations_and_safety.md)
+- [Overhaul plan](./docs/overhaul_plan.md)
+
+## Optional Dependencies
+
+The base package intentionally has no third-party runtime dependencies.
+Install optional training/reporting dependencies when needed:
+
+```bash
+pip install -e '.[training,reporting]'
+```
+
+The `training` extra lists Torch, Transformers, PEFT, Accelerate, TRL, vLLM,
+and related libraries. The `reporting` extra lists heavier analysis tools.
 
 ## Safety
 
-Generated code is untrusted. Run generated solutions in an isolated environment,
-keep hidden tests out of prompts and public traces, and reserve private test
-sets for locked final evaluation only.
+Generated code is untrusted. Keep hidden tests out of prompts and public traces,
+execute generated solutions only in a restricted environment, and reserve locked
+private test sets for final evaluation rather than checkpoint selection.
 
 ## License
 

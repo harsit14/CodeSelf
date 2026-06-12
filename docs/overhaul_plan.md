@@ -677,7 +677,7 @@ Remaining risks:
 
 ## Phase 8: Self-Debug Training Mode
 
-Status: started
+Status: complete
 
 Goals:
 
@@ -891,12 +891,40 @@ Remaining risks:
 
 ## Phase 9: Documentation And Paper-Ready Package
 
-Status: pending
+Status: started
 
 Goals:
 
-- Rewrite the README around the final architecture.
+- Rewrite the README around the final architecture. Started.
 - Extend reproducibility manifests with config hashes, model/tokenizer
   versions, dataset versions, environment lockfiles, and checkpoint hashes.
+  Started.
 - Fill in result templates with plots, confidence intervals, and known failure
   cases.
+
+First slice shipped:
+
+- Rewrote the README around the current CodeSelf architecture: task ingestion,
+  sandboxed execution, reward modes, direct/self-debug rollouts, GRPO/PPO
+  objectives, online training, Transformers/LoRA launch templates, evaluation,
+  dashboarding, and reproducibility.
+- Extended `ReproducibilityManifest` with explicit sections for experiment
+  config hashes, dataset/split artifacts, environment lockfiles, parsed
+  model/tokenizer references, checkpoint manifests, and nested checkpoint
+  artifact checksums.
+- Kept the public reproducibility archive surface conservative while allowing
+  checkpoint manifests and runtime artifact hashes to be summarized separately.
+- Updated `scripts/make_reproducibility_manifest.py` to print the new section
+  counts so richer manifests are visible from the CLI.
+- Updated the reproducibility checklist to match the new manifest sections.
+- Added tests that build a miniature config/dataset/checkpoint package and
+  verify the new manifest JSON, Markdown, model-reference, and checkpoint
+  checksum sections.
+
+Remaining risks:
+
+- Result templates still need paper-ready placeholders for plots, confidence
+  intervals, failure cases, and final table layouts.
+- The manifest parses model references from known config paths, but paper runs
+  still need exact remote model/tokenizer revision pins and hardware/runtime
+  metadata captured from the actual training environment.
