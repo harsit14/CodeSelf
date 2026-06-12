@@ -259,6 +259,8 @@ class TransformersModelEngine:
             generate_kwargs["top_p"] = request.top_p
         if self._raw_tokenizer.eos_token_id is not None:
             generate_kwargs["pad_token_id"] = self._raw_tokenizer.eos_token_id
+        if request.temperature > 0:
+            generate_kwargs["logits_processor"] = _sanitizing_logits_processor(self._torch)
         with self._torch.no_grad():
             output_ids = self._model.generate(**encoded, **generate_kwargs)
         input_ids = tuple(int(token_id) for token_id in output_ids[0].tolist())
@@ -355,6 +357,11 @@ class TransformersModelEngine:
             generate_kwargs["top_p"] = top_p
         if pad_token_id is not None:
             generate_kwargs["pad_token_id"] = pad_token_id
+        if do_sample:
+            # Defensive: replace any inf/nan logits before multinomial sampling
+            # so a single numerical blip in a freshly-updated policy degrades one
+            # sample instead of crashing the whole run.
+            generate_kwargs["logits_processor"] = _sanitizing_logits_processor(torch)
         with torch.no_grad():
             output_ids = self._model.generate(**encoded, **generate_kwargs)
         attention = encoded["attention_mask"]
@@ -448,6 +455,20 @@ def build_generated_sequence(
         finish_reason=finish_reason,
         metadata=sequence_metadata,
     )
+
+
+def _sanitizing_logits_processor(torch: Any) -> Any:
+    """Return a transformers LogitsProcessorList that nan/inf-guards logits."""
+
+    from transformers import LogitsProcessor, LogitsProcessorList
+
+    class _SanitizeLogits(LogitsProcessor):
+        def __call__(self, input_ids: Any, scores: Any) -> Any:
+            if torch.isnan(scores).any() or torch.isinf(scores).any():
+                scores = torch.nan_to_num(scores, nan=-1e9, posinf=1e9, neginf=-1e9)
+            return scores
+
+    return LogitsProcessorList([_SanitizeLogits()])
 
 
 def _strip_trailing_pad(token_ids: tuple[int, ...], pad_token_id: int | None) -> tuple[int, ...]:

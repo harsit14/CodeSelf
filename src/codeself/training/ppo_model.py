@@ -108,9 +108,15 @@ def gather_causal_lm_token_entropy(
         device=logits.device,
     )
     if logits.shape[1] > 1:
-        next_token_logprobs = logits[:, :-1, :].log_softmax(dim=-1)
-        next_token_probs = next_token_logprobs.exp()
-        token_entropy[:, 1:] = -(next_token_probs * next_token_logprobs).sum(dim=-1)
+        # Memory-efficient entropy: H = logsumexp(l) - sum(softmax(l) * l).
+        # This avoids holding both a full-vocab log_softmax and its exp at once
+        # (which doubles the [batch, tokens, vocab] footprint and OOMs on real
+        # vocabularies).
+        shift_logits = logits[:, :-1, :]
+        logsumexp = torch.logsumexp(shift_logits, dim=-1)
+        softmax = torch.softmax(shift_logits, dim=-1)
+        weighted = (softmax * shift_logits).sum(dim=-1)
+        token_entropy[:, 1:] = logsumexp - weighted
     if attention_mask is not None:
         token_entropy = token_entropy * attention_mask.to(dtype=token_entropy.dtype)
     return token_entropy

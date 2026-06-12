@@ -164,6 +164,7 @@ from codeself.training.ppo_loop import (
     PPOTrainingLoopConfig,
     PPOTrainingLoopResult,
     PPOTrainingLoopStep,
+    run_ppo_microbatched_training_loop,
     run_ppo_training_loop,
 )
 from codeself.training.ppo_model import (
@@ -352,6 +353,7 @@ __all__ = [
     "run_ppo_online_training",
     "run_ppo_optimizer_step",
     "run_ppo_rollout_training_cycle",
+    "run_ppo_microbatched_training_loop",
     "run_ppo_training_loop",
     "select_best_run",
     "summarize_grpo_step",

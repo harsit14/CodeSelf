@@ -1,0 +1,96 @@
+# Real single-GPU/MPS PPO debug run for the local cached Qwen3-0.6B-Base.
+#
+# The PPO comparison baseline for grpo_debug_local.yaml: same model, dataset,
+# task budget, evaluation protocol, and microbatched forward/backward. PPO adds
+# an integrated value head, GAE, and a clipped value loss. Designed to run on an
+# M5 Pro in a few minutes.
+#
+#   python3 scripts/run_online_training.py --config configs/experiments/ppo_debug_local.yaml
+experiment:
+  name: ppo_debug_local
+  seed: 20260601
+algorithm: ppo
+data:
+  tasks: data/processed/debug_tasks.jsonl
+  split: train
+  eval_split: dev
+  skip_quality_checks: false
+output:
+  dir: artifacts/ppo_debug_local
+model:
+  backend: transformers
+  name: Qwen/Qwen3-0.6B-Base
+  tokenizer: Qwen/Qwen3-0.6B-Base
+  # bf16, not fp16: the value head operates on raw hidden states whose
+  # magnitudes overflow fp16's ~65k range to inf/nan within one update. bf16
+  # shares fp32's exponent range, so PPO value training stays finite.
+  dtype: bf16
+  device: mps
+  local_files_only: true
+  trust_remote_code: false
+  gradient_checkpointing: false
+  use_lora: true
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.0
+  lora_target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  full_finetune: false
+  # Integrated value head on the shared policy backbone. In bf16 the value head
+  # is numerically stable; a separate critic (model.value_model.enabled) is also
+  # supported for ablations but doubles compute.
+  value_head:
+    hidden_size: 1024
+  old_policy:
+    enabled: true
+  old_value:
+    enabled: true
+  reference:
+    enabled: true
+prompt:
+  template: direct_solution_v1
+online:
+  cycles: 15
+  sync_old_policy_before_cycle: true
+rollout:
+  mode: direct
+  group_size: 8
+  samples_per_task: 8
+  max_prompt_tokens: 512
+  max_response_tokens: 160
+  temperature: 1.0
+  top_p: 0.95
+execution:
+  include_hidden: true
+batch:
+  response_source: parsed_code
+  include_failed_parses: true
+training:
+  max_batches: 1
+  step_scheduler: false
+  device: mps
+  dtype: bf16
+  microbatch_size: 4
+  optimizer:
+    learning_rate: 0.00001
+    weight_decay: 0.0
+    warmup_steps: 0
+    gradient_accumulation_steps: 1
+    max_grad_norm: 1.0
+  loss:
+    clip_epsilon: 0.2
+    value_clip_epsilon: 0.2
+    value_loss_coef: 0.5
+    entropy_coef: 0.0
+    kl_beta: 0.01
+    gamma: 1.0
+    gae_lambda: 0.95
+    normalize_advantages: true
+    max_log_ratio: 20.0
+evaluation:
+  enabled: true
+  samples_per_task: 4
+  max_new_tokens: 160
+  temperature: 0.8
+  top_p: 0.95
+  include_hidden: true
+  ks: [1, 4]

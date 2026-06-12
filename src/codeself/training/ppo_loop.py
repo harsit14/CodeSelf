@@ -182,6 +182,88 @@ def run_ppo_training_loop(
     return PPOTrainingLoopResult(config=loop_config, steps=tuple(steps))
 
 
+def run_ppo_microbatched_training_loop(
+    batches: Iterable[TrainingBatch],
+    *,
+    tensor_batch_builder: PPOTensorBatchBuilder,
+    microbatch_size: int,
+    optimizer: Any,
+    scheduler: Any | None = None,
+    config: PPOTrainingLoopConfig | None = None,
+) -> PPOTrainingLoopResult:
+    """Run PPO training with microbatched forward+backward accumulation.
+
+    Like the GRPO microbatched loop: each logical batch is split into
+    ``microbatch_size``-sample microbatches forwarded and back-propagated one
+    at a time, so the live autograd graph stays bounded by a microbatch. This
+    keeps real-vocabulary value-head models within MPS/GPU memory.
+    """
+
+    if microbatch_size <= 0:
+        raise ValueError("microbatch_size must be positive")
+    loop_config = config or PPOTrainingLoopConfig()
+    selected_batches = _select_batches(batches, loop_config.max_batches)
+    if not selected_batches:
+        raise ValueError("run_ppo_microbatched_training_loop requires at least one batch")
+
+    base_step = loop_config.optimizer_step
+    steps: list[PPOTrainingLoopStep] = []
+    optimizer_step_index = 0
+    global_step = 0
+    for batch in selected_batches:
+        microbatches = _split_training_batch(batch, microbatch_size)
+        accumulation_size = len(microbatches)
+        for index, microbatch in enumerate(microbatches, start=1):
+            global_step += 1
+            should_step = index == accumulation_size
+            step_config = replace(
+                base_step,
+                gradient_accumulation_steps=accumulation_size,
+                zero_grad=index == 1 and base_step.zero_grad,
+                step_optimizer=should_step and base_step.step_optimizer,
+            )
+            tensor_batch = tensor_batch_builder(microbatch)
+            metrics = run_ppo_optimizer_step(
+                tensor_batch,
+                optimizer=optimizer,
+                config=step_config,
+            )
+            scheduler_step = False
+            if scheduler is not None and should_step and loop_config.step_scheduler:
+                scheduler.step()
+                scheduler_step = True
+            if metrics.optimizer_step:
+                optimizer_step_index += 1
+                current_optimizer_step: int | None = optimizer_step_index
+            else:
+                current_optimizer_step = None
+            steps.append(
+                PPOTrainingLoopStep(
+                    step=global_step,
+                    accumulation_index=index,
+                    accumulation_size=accumulation_size,
+                    optimizer_step_index=current_optimizer_step,
+                    scheduler_step=scheduler_step,
+                    metrics=metrics,
+                )
+            )
+
+    return PPOTrainingLoopResult(config=loop_config, steps=tuple(steps))
+
+
+def _split_training_batch(
+    batch: TrainingBatch,
+    microbatch_size: int,
+) -> list[TrainingBatch]:
+    samples = list(batch.samples)
+    if microbatch_size <= 0 or microbatch_size >= len(samples):
+        return [batch]
+    return [
+        TrainingBatch(tuple(samples[start : start + microbatch_size]))
+        for start in range(0, len(samples), microbatch_size)
+    ]
+
+
 def _select_batches(
     batches: Iterable[TrainingBatch],
     max_batches: int | None,
