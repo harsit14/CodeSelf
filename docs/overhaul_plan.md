@@ -841,12 +841,29 @@ Eighth slice shipped:
 - Added tests for PEFT adapter config construction, LoRA runtime parsing, and
   the offline PPO Transformers launch path with `use_lora=true`.
 
+Ninth slice shipped:
+
+- Added a separate PPO critic/value-model launcher path through
+  `model.value_model.enabled`.
+- When a separate value model is enabled, PPO now trains a bare policy causal LM
+  plus a distinct `CausalLMWithValueHead` critic instead of attaching the value
+  head to the policy model.
+- Separate critics can inherit policy runtime settings or override model name,
+  tokenizer, revision, dtype, device, LoRA settings, local-file behavior, and
+  device map.
+- Added optional loading for full value-model wrapper state paths and
+  value-head-only state paths, matching the checkpoint artifacts written by the
+  PPO trainer.
+- Old-policy snapshots now mirror the bare policy architecture in separate
+  critic mode, while old-value snapshots mirror the separate critic for state
+  syncing.
+- Added `ppo_online_transformers_separate_value.example.yaml` as a launch
+  template for policy/value ablations.
+- Added tests for separate PPO value-model assembly, old-policy/old-value
+  syncing, and value-head checkpoint loading.
+
 Remaining risks:
 
-- GRPO and PPO now both have single-config launcher paths for local
-  Transformers causal-LM policies with LoRA adapters. The launcher still does
-  not assemble a separately pretrained critic/value model for PPO; it uses an
-  integrated PPO value head by default.
 - Discounting is intentionally simple: positive final reward is scaled by
   `discount ** revision_count`, while non-positive outcomes are left unchanged.
 

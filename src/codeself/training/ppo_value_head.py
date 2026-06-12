@@ -50,6 +50,18 @@ class CausalLMWithValueHead:
         self.base_model.load_state_dict(state["base_model"])
         self.value_head.load_state_dict(state["value_head"])
 
+    def load_state_path(self, path: str | Path) -> None:
+        """Load a full value-head wrapper state dict from disk."""
+
+        torch = require_torch()
+        self.load_state_dict(torch.load(Path(path), map_location="cpu"))
+
+    def load_value_head_path(self, path: str | Path) -> None:
+        """Load only the token-value head weights from disk."""
+
+        torch = require_torch()
+        self.value_head.load_state_dict(torch.load(Path(path), map_location="cpu"))
+
     def save_pretrained(self, output_dir: str | Path) -> None:
         path = Path(output_dir)
         path.mkdir(parents=True, exist_ok=True)

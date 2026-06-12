@@ -347,37 +347,73 @@ def _build_transformers_components(
     algorithm: OnlineAlgorithm,
 ) -> _LauncherComponents:
     model_config = _build_model_runtime_config(config)
-    engine_config = TransformersEngineConfig(
-        model=model_config,
-        local_files_only=bool(config_get(config, "model.local_files_only", True)),
-        device_map=_optional_str(config_get(config, "model.device_map")),
-    )
+    engine_config = _build_transformers_engine_config(config, "model", model_config)
     policy_engine = TransformersModelEngine(engine_config)
     policy_model = policy_engine.model
     value_model = None
     old_value_model = None
+    use_separate_value_model = (
+        algorithm == "ppo" and bool(config_get(config, "model.value_model.enabled", False))
+    )
+    value_engine_config = None
     if algorithm == "ppo":
-        policy_model = CausalLMWithValueHead(
-            policy_engine.model,
-            hidden_size=_optional_int(config_get(config, "model.value_head.hidden_size")),
-        )
+        if use_separate_value_model:
+            value_engine_config = _build_value_model_engine_config(config, model_config)
+            value_model = _transformers_value_head_model(
+                value_engine_config,
+                hidden_size=_optional_int(
+                    config_get(
+                        config,
+                        "model.value_model.value_head.hidden_size",
+                        config_get(config, "model.value_head.hidden_size"),
+                    )
+                ),
+                state_path=_path_value(None, config_get(config, "model.value_model.state_path")),
+                value_head_path=_path_value(
+                    None,
+                    config_get(config, "model.value_model.value_head_state_path"),
+                ),
+            )
+        else:
+            policy_model = CausalLMWithValueHead(
+                policy_engine.model,
+                hidden_size=_optional_int(config_get(config, "model.value_head.hidden_size")),
+            )
     generator = ModelEngineCodeGenerator(
         policy_engine,
         model_name=model_config.name,
         backend_name="policy_engine",
     )
     if algorithm == "ppo":
-        old_policy_model = _optional_transformers_value_head_model(
-            config,
-            engine_config,
-            "model.old_policy.enabled",
-        )
-        if bool(config_get(config, "model.old_value.enabled", False)):
-            old_value_model = old_policy_model or _optional_transformers_value_head_model(
+        if use_separate_value_model:
+            old_policy_model = _optional_transformers_model(
                 config,
                 engine_config,
-                "model.old_value.enabled",
+                "model.old_policy.enabled",
             )
+        else:
+            old_policy_model = _optional_transformers_value_head_model(
+                config,
+                engine_config,
+                "model.old_policy.enabled",
+            )
+        if bool(config_get(config, "model.old_value.enabled", False)):
+            old_value_engine_config = value_engine_config or engine_config
+            old_value_model = (
+                None
+                if old_policy_model is not None and not use_separate_value_model
+                else _optional_transformers_value_head_model(
+                    config,
+                    old_value_engine_config,
+                    "model.old_value.enabled",
+                    hidden_size_path=(
+                        "model.value_model.value_head.hidden_size"
+                        if use_separate_value_model
+                        else "model.value_head.hidden_size"
+                    ),
+                )
+            )
+            old_value_model = old_value_model or old_policy_model
     else:
         old_policy_model = _optional_transformers_model(
             config,
@@ -431,6 +467,89 @@ def _build_model_runtime_config(config: dict[str, Any]) -> ModelRuntimeConfig:
     )
 
 
+def _build_value_model_engine_config(
+    config: dict[str, Any],
+    policy_config: ModelRuntimeConfig,
+) -> TransformersEngineConfig:
+    value_model_config = _build_prefixed_model_runtime_config(
+        config,
+        "model.value_model",
+        default=policy_config,
+    )
+    return _build_transformers_engine_config(config, "model.value_model", value_model_config)
+
+
+def _build_prefixed_model_runtime_config(
+    config: dict[str, Any],
+    prefix: str,
+    *,
+    default: ModelRuntimeConfig,
+) -> ModelRuntimeConfig:
+    model_name = (
+        config_get(config, f"{prefix}.name")
+        or config_get(config, f"{prefix}.model_name_or_path")
+        or default.name
+    )
+    use_lora = bool(config_get(config, f"{prefix}.use_lora", default.use_lora))
+    full_finetune = bool(
+        config_get(config, f"{prefix}.full_finetune", not use_lora)
+    )
+    return ModelRuntimeConfig(
+        name=str(model_name),
+        tokenizer=_optional_str(config_get(config, f"{prefix}.tokenizer", default.tokenizer)),
+        revision=_optional_str(config_get(config, f"{prefix}.revision", default.revision)),
+        tokenizer_revision=_optional_str(
+            config_get(config, f"{prefix}.tokenizer_revision", default.tokenizer_revision)
+        ),
+        dtype=str(config_get(config, f"{prefix}.dtype", default.dtype)),
+        device=str(config_get(config, f"{prefix}.device", default.device)),
+        trust_remote_code=bool(
+            config_get(config, f"{prefix}.trust_remote_code", default.trust_remote_code)
+        ),
+        gradient_checkpointing=bool(
+            config_get(
+                config,
+                f"{prefix}.gradient_checkpointing",
+                default.gradient_checkpointing,
+            )
+        ),
+        use_lora=use_lora,
+        lora_rank=int(config_get(config, f"{prefix}.lora_rank", default.lora_rank)),
+        lora_alpha=int(config_get(config, f"{prefix}.lora_alpha", default.lora_alpha)),
+        lora_dropout=float(
+            config_get(config, f"{prefix}.lora_dropout", default.lora_dropout)
+        ),
+        lora_target_modules=_str_tuple(
+            config_get(config, f"{prefix}.lora_target_modules", default.lora_target_modules)
+        ),
+        full_finetune=full_finetune,
+    )
+
+
+def _build_transformers_engine_config(
+    config: dict[str, Any],
+    prefix: str,
+    model_config: ModelRuntimeConfig,
+) -> TransformersEngineConfig:
+    return TransformersEngineConfig(
+        model=model_config,
+        local_files_only=bool(
+            config_get(
+                config,
+                f"{prefix}.local_files_only",
+                config_get(config, "model.local_files_only", True),
+            )
+        ),
+        device_map=_optional_str(
+            config_get(
+                config,
+                f"{prefix}.device_map",
+                config_get(config, "model.device_map"),
+            )
+        ),
+    )
+
+
 def _reference_engine_config(
     config: dict[str, Any],
     engine_config: TransformersEngineConfig,
@@ -462,13 +581,37 @@ def _optional_transformers_value_head_model(
     config: dict[str, Any],
     engine_config: TransformersEngineConfig,
     enabled_path: str,
+    *,
+    hidden_size_path: str = "model.value_head.hidden_size",
 ) -> CausalLMWithValueHead | None:
     if not bool(config_get(config, enabled_path, False)):
         return None
-    return CausalLMWithValueHead(
-        TransformersModelEngine(engine_config).model,
-        hidden_size=_optional_int(config_get(config, "model.value_head.hidden_size")),
+    return _transformers_value_head_model(
+        engine_config,
+        hidden_size=_optional_int(config_get(config, hidden_size_path)),
     )
+
+
+def _transformers_value_head_model(
+    engine_config: TransformersEngineConfig,
+    *,
+    hidden_size: int | None,
+    state_path: Path | None = None,
+    value_head_path: Path | None = None,
+) -> CausalLMWithValueHead:
+    model = CausalLMWithValueHead(
+        TransformersModelEngine(engine_config).model,
+        hidden_size=hidden_size,
+    )
+    if state_path is not None and value_head_path is not None:
+        raise ValueError(
+            "model.value_model.state_path and value_head_state_path are mutually exclusive"
+        )
+    if state_path is not None:
+        model.load_state_path(state_path)
+    if value_head_path is not None:
+        model.load_value_head_path(value_head_path)
+    return model
 
 
 def _build_non_policy_generator(

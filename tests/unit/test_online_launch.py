@@ -140,6 +140,7 @@ class OnlineTrainingLaunchTests(unittest.TestCase):
                 },
             )
 
+            _FakeTransformersEngine.seen_model_names = []
             with patch.object(
                 online_launch_module,
                 "TransformersModelEngine",
@@ -165,6 +166,78 @@ class OnlineTrainingLaunchTests(unittest.TestCase):
         )
         self.assertTrue(launch.result.steps[0].old_policy_synced)
         self.assertTrue(launch.result.steps[0].old_value_synced)
+        self.assertEqual(
+            _FakeTransformersEngine.seen_model_names,
+            ["local-model", "local-model"],
+        )
+
+    def test_runs_ppo_transformers_with_separate_value_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            tasks_path = root / "tasks.jsonl"
+            TaskRegistry([_task()]).to_jsonl(tasks_path)
+            config = _base_config(
+                "ppo",
+                tasks_path=tasks_path,
+                output_dir=root / "artifacts",
+                model={
+                    "backend": "transformers",
+                    "name": "policy-model",
+                    "use_lora": True,
+                    "full_finetune": False,
+                    "lora_rank": 4,
+                    "lora_alpha": 8,
+                    "lora_target_modules": ["q_proj", "v_proj"],
+                    "value_model": {
+                        "enabled": True,
+                        "name": "critic-model",
+                        "use_lora": False,
+                        "full_finetune": True,
+                        "value_head": {"hidden_size": 4},
+                    },
+                    "old_policy": {"enabled": True},
+                    "old_value": {"enabled": True},
+                },
+                training={
+                    "max_batches": 1,
+                    "optimizer": {"learning_rate": 0.05},
+                    "loss": {
+                        "kl_beta": 0.0,
+                        "normalize_advantages": False,
+                        "value_clip_epsilon": None,
+                    },
+                },
+            )
+
+            _FakeTransformersEngine.seen_model_names = []
+            with patch.object(
+                online_launch_module,
+                "TransformersModelEngine",
+                _FakeTransformersEngine,
+            ):
+                launch = run_online_training_from_config(config)
+
+        policy_runtime = online_launch_module._build_model_runtime_config(config)
+        value_engine_config = online_launch_module._build_value_model_engine_config(
+            config,
+            policy_runtime,
+        )
+        training = launch.result.steps[0].result.training
+
+        self.assertEqual(launch.algorithm, "ppo")
+        self.assertEqual(training.policy_model_class, "_FakeTransformerCausalLM")
+        self.assertEqual(training.value_model_class, "CausalLMWithValueHead")
+        self.assertEqual(training.old_policy_model_class, "_FakeTransformerCausalLM")
+        self.assertEqual(training.old_value_model_class, "CausalLMWithValueHead")
+        self.assertTrue(launch.result.steps[0].old_policy_synced)
+        self.assertTrue(launch.result.steps[0].old_value_synced)
+        self.assertEqual(value_engine_config.model.name, "critic-model")
+        self.assertFalse(value_engine_config.model.use_lora)
+        self.assertTrue(value_engine_config.model.full_finetune)
+        self.assertEqual(
+            _FakeTransformersEngine.seen_model_names,
+            ["policy-model", "critic-model", "policy-model", "critic-model"],
+        )
 
     def test_value_head_wrapper_returns_logits_and_values(self) -> None:
         import torch
@@ -176,6 +249,36 @@ class OnlineTrainingLaunchTests(unittest.TestCase):
         self.assertEqual(output.logits.shape, (1, 3, 8))
         self.assertEqual(output.values.shape, (1, 3))
         self.assertTrue(any(parameter.requires_grad for parameter in model.parameters()))
+
+    def test_value_head_wrapper_loads_saved_state_paths(self) -> None:
+        import torch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = CausalLMWithValueHead(
+                _FakeTransformerCausalLM(vocab_size=8, hidden_size=4)
+            )
+            target = CausalLMWithValueHead(
+                _FakeTransformerCausalLM(vocab_size=8, hidden_size=4)
+            )
+            with torch.no_grad():
+                source.value_head.weight.fill_(0.25)
+                source.value_head.bias.fill_(0.5)
+            state_path = root / "value_model.pt"
+            value_head_path = root / "value_head.pt"
+            torch.save(source.state_dict(), state_path)
+            torch.save(source.value_head.state_dict(), value_head_path)
+
+            target.load_state_path(state_path)
+            from_full_state = target.value_head.weight.detach().clone()
+            with torch.no_grad():
+                target.value_head.weight.zero_()
+                target.value_head.bias.zero_()
+            target.load_value_head_path(value_head_path)
+
+        self.assertTrue(torch.equal(from_full_state, source.value_head.weight))
+        self.assertTrue(torch.equal(target.value_head.weight, source.value_head.weight))
+        self.assertTrue(torch.equal(target.value_head.bias, source.value_head.bias))
 
 
 def _base_config(
@@ -225,8 +328,11 @@ def _task() -> TaskSpec:
 
 
 class _FakeTransformersEngine:
+    seen_model_names: list[str] = []
+
     def __init__(self, config: object) -> None:
         self.config = config
+        self.seen_model_names.append(str(config.model.name))
         self.tokenizer = _SequentialTokenizer()
         self.model = _FakeTransformerCausalLM(vocab_size=512, hidden_size=4)
 

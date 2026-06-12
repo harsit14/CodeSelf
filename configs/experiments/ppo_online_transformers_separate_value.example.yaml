@@ -1,0 +1,94 @@
+experiment:
+  name: ppo_online_transformers_separate_value
+  seed: 20260601
+algorithm: ppo
+data:
+  tasks: data/processed/codeself_tasks.jsonl
+  split: train
+  limit: 8
+  eval_split: dev
+  eval_limit: 8
+  skip_quality_checks: false
+output:
+  dir: artifacts/ppo_online_transformers_separate_value
+model:
+  backend: transformers
+  name: Qwen/Qwen2.5-Coder-0.5B
+  tokenizer: Qwen/Qwen2.5-Coder-0.5B
+  dtype: fp16
+  device: mps
+  local_files_only: true
+  trust_remote_code: false
+  use_lora: true
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  lora_target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  full_finetune: false
+  value_model:
+    enabled: true
+    name: Qwen/Qwen2.5-Coder-0.5B
+    tokenizer: Qwen/Qwen2.5-Coder-0.5B
+    use_lora: true
+    lora_rank: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    lora_target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+    full_finetune: false
+    state_path: null
+    value_head_state_path: null
+  old_policy:
+    enabled: false
+  old_value:
+    enabled: false
+  reference:
+    enabled: false
+prompt:
+  template: direct_solution_v1
+rollout:
+  mode: self_debug
+  group_size: 2
+  samples_per_task: 2
+  max_prompt_tokens: 1024
+  max_response_tokens: 256
+  temperature: 0.7
+  top_p: 0.95
+self_debug:
+  max_revisions: 1
+  revision_strategy: rule_based
+  revision_prompt_template: self_debug_revision_v1
+  revision_reward_discount: 1.0
+execution:
+  include_hidden: true
+batch:
+  response_source: raw_completion
+  include_failed_parses: true
+training:
+  max_batches: 2
+  step_scheduler: true
+  device: mps
+  dtype: fp16
+  optimizer:
+    learning_rate: 0.000001
+    weight_decay: 0.0
+    warmup_steps: 0
+    gradient_accumulation_steps: 1
+    max_grad_norm: 1.0
+  loss:
+    clip_epsilon: 0.2
+    value_clip_epsilon: null
+    value_loss_coef: 0.5
+    entropy_coef: 0.0
+    kl_beta: 0.0
+    gamma: 1.0
+    gae_lambda: 1.0
+    normalize_advantages: false
+    max_log_ratio: 20.0
+evaluation:
+  enabled: true
+  samples_per_task: 1
+  max_new_tokens: 256
+  temperature: 0.0
+  top_p: 1.0
+  include_hidden: true
+  ks: [1]
