@@ -188,6 +188,7 @@ from codeself.training.ppo_trainer import (
     PPOValueEstimateProvider,
     run_ppo_model_training,
 )
+from codeself.training.self_debug import SelfDebugCollectionConfig
 
 __all__ = [
     "AlgorithmComparison",
@@ -265,6 +266,7 @@ __all__ = [
     "PaddedTrainingTensors",
     "RolloutRuntimeConfig",
     "SequenceTrainingSample",
+    "SelfDebugCollectionConfig",
     "SkippedRollout",
     "TensorBatchBuilder",
     "TokenizedPromptResponse",

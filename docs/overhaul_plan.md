@@ -735,14 +735,36 @@ Second slice shipped:
   model revision trace metadata, rollout metadata, and downstream rollout
   compatibility.
 
+Third slice shipped:
+
+- Added `SelfDebugCollectionConfig` for training-cycle self-debug collection
+  settings: max revisions, revision strategy, revision prompt template, and
+  revision reward discount.
+- `GRPORolloutTrainingCycleConfig` and `PPORolloutTrainingCycleConfig` now
+  support `rollout_mode="direct"` and `rollout_mode="self_debug"` with shared
+  self-debug collection settings.
+- GRPO and PPO rollout-training cycles now call `generate_self_debug_rollouts()`
+  natively when self-debug mode is enabled, then feed the resulting ordinary
+  `RolloutRecord` objects into the existing batch builders.
+- Cycle artifacts now include optional `self_debug_traces.jsonl` through a
+  `traces_path` result/artifact field.
+- Multi-cycle GRPO and PPO online runners now write `self_debug_traces.jsonl`
+  inside each `cycle_*` artifact directory when the cycle rollout mode is
+  self-debug.
+- Direct rollout cycles now stamp rollout metadata with `rollout_mode="direct"`
+  so downstream summaries can separate single-shot and self-debug collection.
+- Added GRPO/PPO one-cycle and online tests for native self-debug collection,
+  trace artifact writing, reward discounting, rollout metadata, and continued
+  compatibility with existing training batches.
+
 Remaining risks:
 
+- The real online trainer configs are typed Python records, but the repository
+  still lacks a CLI config loader for launching GRPO/PPO online training from
+  JSON/YAML experiment files.
 - Model revision uses the same generator backend and sampling settings as the
   initial attempt. Later work should split initial and revision generation
   configs for more precise ablations.
-- Current training loops still collect direct rollouts internally. They can
-  consume self-debug rollout JSONL through the batch builders, but online GRPO
-  and PPO need config switches before self-debug collection is native there.
 - Discounting is intentionally simple: positive final reward is scaled by
   `discount ** revision_count`, while non-positive outcomes are left unchanged.
 

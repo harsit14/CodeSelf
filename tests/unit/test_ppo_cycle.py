@@ -11,7 +11,7 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from codeself.agent import DIRECT_SOLUTION_TEMPLATE, MockGenerator  # noqa: E402
+from codeself.agent import DIRECT_SOLUTION_TEMPLATE, MockGenerator, StaticGenerator  # noqa: E402
 from codeself.datasets import Split, TaskSpec, TestSpec  # noqa: E402
 from codeself.training import (  # noqa: E402
     OptimizerConfig,
@@ -19,6 +19,7 @@ from codeself.training import (  # noqa: E402
     PPOModelTrainingConfig,
     PPORolloutTrainingCycleConfig,
     RolloutRuntimeConfig,
+    SelfDebugCollectionConfig,
     run_ppo_rollout_training_cycle,
     torch_training_available,
     truncate_token_ids,
@@ -118,6 +119,57 @@ class PPORolloutTrainingCycleTests(unittest.TestCase):
         self.assertTrue(checkpoint["has_state_artifacts"])
         self.assertEqual(checkpoint["kind"], "ppo_model_training_checkpoint")
         self.assertEqual(result.to_dict()["artifacts"]["rollouts_path"], str(rollouts_path))
+
+    @unittest.skipUnless(torch_training_available(), "Torch is an optional training dependency")
+    def test_cycle_can_collect_self_debug_rollouts_and_traces(self) -> None:
+        tokenizer = _SequentialTokenizerEngine()
+        policy_model = _ToyPPOCausalLM(vocab_size=512)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            rollouts_path = tmp_path / "rollouts.jsonl"
+            traces_path = tmp_path / "self_debug_traces.jsonl"
+
+            result = run_ppo_rollout_training_cycle(
+                [_task()],
+                generator=StaticGenerator("```python\ndef add_one(x):\n    return x\n```"),
+                prompt_template=DIRECT_SOLUTION_TEMPLATE,
+                tokenizer=tokenizer,
+                policy_model=policy_model,
+                config=PPORolloutTrainingCycleConfig(
+                    seed=4,
+                    rollout_mode="self_debug",
+                    self_debug=SelfDebugCollectionConfig(
+                        max_revisions=1,
+                        revision_reward_discount=0.5,
+                    ),
+                    rollout=RolloutRuntimeConfig(
+                        group_size=2,
+                        samples_per_task=2,
+                        max_prompt_tokens=64,
+                        max_response_tokens=64,
+                    ),
+                    training=PPOModelTrainingConfig(
+                        optimizer=OptimizerConfig(learning_rate=0.05),
+                        loss=PPOLossConfig(
+                            kl_beta=0.0,
+                            normalize_advantages=False,
+                            value_clip_epsilon=None,
+                        ),
+                    ),
+                ),
+                rollouts_path=rollouts_path,
+                traces_path=traces_path,
+            )
+            trace_lines = traces_path.read_text(encoding="utf-8").splitlines()
+            rollouts_exists = rollouts_path.exists()
+
+        self.assertEqual(result.rollout_count, 2)
+        self.assertEqual(result.traces_path, str(traces_path))
+        self.assertEqual(len(trace_lines), 2)
+        self.assertEqual(result.rollouts[0].metadata["rollout_mode"], "self_debug")
+        self.assertEqual(result.rollouts[0].metadata["revision_count"], 1)
+        self.assertEqual(result.rollouts[0].reward["reward"], 0.5)
+        self.assertTrue(rollouts_exists)
 
 
 class _SequentialTokenizerEngine:

@@ -11,7 +11,7 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from codeself.agent import DIRECT_SOLUTION_TEMPLATE, MockGenerator  # noqa: E402
+from codeself.agent import DIRECT_SOLUTION_TEMPLATE, MockGenerator, StaticGenerator  # noqa: E402
 from codeself.datasets import Split, TaskSpec, TestSpec  # noqa: E402
 from codeself.training import (  # noqa: E402
     OptimizerConfig,
@@ -21,6 +21,7 @@ from codeself.training import (  # noqa: E402
     PPORolloutTrainingCycleConfig,
     PPOLossConfig,
     RolloutRuntimeConfig,
+    SelfDebugCollectionConfig,
     run_ppo_online_training,
     torch_training_available,
     truncate_token_ids,
@@ -154,6 +155,54 @@ class PPOOnlineTrainingTests(unittest.TestCase):
         self.assertFalse(torch.equal(before_logits, policy_model.logit_table.detach()))
         self.assertFalse(torch.equal(before_values, policy_model.value_table.detach()))
         self.assertEqual(result.to_dict()["artifact_dir"], str(artifact_dir))
+
+    @unittest.skipUnless(torch_training_available(), "Torch is an optional training dependency")
+    def test_online_training_writes_self_debug_traces_per_cycle(self) -> None:
+        tokenizer = _SequentialTokenizerEngine()
+        policy_model = _ToyPPOCausalLM(vocab_size=512)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact_dir = Path(tmpdir) / "online"
+            result = run_ppo_online_training(
+                [_task()],
+                generator=StaticGenerator("```python\ndef add_one(x):\n    return x\n```"),
+                prompt_template=DIRECT_SOLUTION_TEMPLATE,
+                tokenizer=tokenizer,
+                policy_model=policy_model,
+                config=PPOOnlineTrainingConfig(
+                    cycles=1,
+                    cycle=PPORolloutTrainingCycleConfig(
+                        seed=4,
+                        rollout_mode="self_debug",
+                        self_debug=SelfDebugCollectionConfig(
+                            max_revisions=1,
+                            revision_reward_discount=0.5,
+                        ),
+                        rollout=RolloutRuntimeConfig(
+                            group_size=2,
+                            samples_per_task=2,
+                            max_prompt_tokens=64,
+                            max_response_tokens=64,
+                        ),
+                        training=PPOModelTrainingConfig(
+                            optimizer=OptimizerConfig(learning_rate=0.05),
+                            loss=PPOLossConfig(
+                                kl_beta=0.0,
+                                normalize_advantages=False,
+                                value_clip_epsilon=None,
+                            ),
+                        ),
+                    ),
+                ),
+                artifact_dir=artifact_dir,
+            )
+            traces_path = artifact_dir / "cycle_0001" / "self_debug_traces.jsonl"
+            trace_lines = traces_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(result.cycle_count, 1)
+        self.assertEqual(result.steps[0].result.traces_path, str(traces_path))
+        self.assertEqual(len(trace_lines), 2)
+        self.assertEqual(result.steps[0].result.rollouts[0].metadata["rollout_mode"], "self_debug")
+        self.assertEqual(result.steps[0].result.rollouts[0].reward["reward"], 0.5)
 
 
 class _SequentialTokenizerEngine:

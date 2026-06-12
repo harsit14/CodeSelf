@@ -268,6 +268,11 @@ def run_grpo_online_training(
             metrics_path=cycle_dir / "metrics.jsonl" if cycle_dir is not None else None,
             checkpoint_path=cycle_dir / "checkpoint.json" if cycle_dir is not None else None,
             state_dir=cycle_dir / "state" if cycle_dir is not None else None,
+            traces_path=(
+                cycle_dir / "self_debug_traces.jsonl"
+                if cycle_dir is not None and cycle_config.rollout_mode == "self_debug"
+                else None
+            ),
         )
         evaluation = (
             _run_cycle_evaluation(
