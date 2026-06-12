@@ -12,7 +12,7 @@ from codeself.agent.parser import ParseStatus, ParsedCompletion, extract_code
 from codeself.agent.prompts import PromptTemplate
 from codeself.datasets import TaskSpec
 from codeself.execution import ExecutionJob, SandboxedTestRunner
-from codeself.rewards import CompositeRewardScorer, RewardScorer
+from codeself.rewards import CompositeRewardScorer, RewardScorer, detect_reward_hacking
 
 
 @dataclass(frozen=True)
@@ -132,6 +132,7 @@ def generate_rollouts(
     ):
         execution_result = batch_result.result
         reward = active_scorer.score(execution_result, solution_code=parsed.code)
+        hacking = detect_reward_hacking(parsed.code, task)
         records.append(
             RolloutRecord(
                 task_id=task.task_id,
@@ -148,6 +149,9 @@ def generate_rollouts(
                 metadata={
                     "seed": seed,
                     "include_hidden": include_hidden,
+                    "difficulty": task.metadata.get("difficulty", "unknown"),
+                    "reward_hacking_flagged": hacking.flagged,
+                    "reward_hacking_reasons": "; ".join(hacking.reasons),
                     **(metadata or {}),
                 },
             )

@@ -19,12 +19,14 @@ from codeself.rewards.modes import (
     make_reward_scorer_from_mode,
 )
 from codeself.rewards.quality import QualityMetrics, measure_quality
+from codeself.rewards.reward_hacking import RewardHackingReport, detect_reward_hacking
 
 __all__ = [
     "AppliedPenalty",
     "CompositeRewardScorer",
     "EfficiencyMetrics",
     "QualityMetrics",
+    "RewardHackingReport",
     "RewardBreakdown",
     "RewardComponent",
     "RewardConfig",
@@ -33,6 +35,7 @@ __all__ = [
     "RewardScorer",
     "RewardWeights",
     "ConfigurableRewardScorer",
+    "detect_reward_hacking",
     "make_reward_scorer",
     "make_reward_scorer_from_mode",
     "measure_efficiency",
