@@ -157,6 +157,14 @@ from codeself.training.ppo_model import (
     gather_causal_lm_token_entropy,
     pad_ppo_training_batch_tensors,
 )
+from codeself.training.ppo_online import (
+    PPOOnlineEvaluationConfig,
+    PPOOnlineEvaluationResult,
+    PPOOnlineTrainingConfig,
+    PPOOnlineTrainingResult,
+    PPOOnlineTrainingStep,
+    run_ppo_online_training,
+)
 from codeself.training.ppo_torch import (
     PPOTensorBatch,
     PPOTensorLossResult,
@@ -227,6 +235,11 @@ __all__ = [
     "PPOLossResult",
     "PPOModelTrainingConfig",
     "PPOModelTrainingResult",
+    "PPOOnlineEvaluationConfig",
+    "PPOOnlineEvaluationResult",
+    "PPOOnlineTrainingConfig",
+    "PPOOnlineTrainingResult",
+    "PPOOnlineTrainingStep",
     "PPORolloutBatchConfig",
     "PPORolloutBatchResult",
     "PPORolloutTrainingCycleConfig",
@@ -306,6 +319,7 @@ __all__ = [
     "run_grpo_rollout_training_cycle",
     "run_grpo_training_loop",
     "run_ppo_model_training",
+    "run_ppo_online_training",
     "run_ppo_optimizer_step",
     "run_ppo_rollout_training_cycle",
     "run_ppo_training_loop",

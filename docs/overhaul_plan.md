@@ -430,7 +430,7 @@ Phase 5 completion note:
 
 ## Phase 6: PPO Baseline
 
-Status: started
+Status: complete
 
 Goals:
 
@@ -549,14 +549,38 @@ Seventh slice shipped:
   collects rollouts, trains the integrated policy/value toy model, writes
   artifacts, and verifies policy and value updates.
 
-Remaining risks:
+Eighth slice shipped:
 
-- PPO now has dependency-free and Torch objective implementations, an optimizer
-  step, model/value-head tensor wiring, a tensor training loop, and a
-  model-aware trainer plus a one-cycle rollout trainer; it still needs repeated
-  online trainer parity with the completed GRPO path.
-- Rollout budget and dev-evaluation parity with GRPO should be enforced once the
-  PPO online trainer exists.
+- Added `run_ppo_online_training()` as a repeated collect -> execute -> score
+  -> optimize loop over multiple PPO rollout-training cycles.
+- Added `PPOOnlineTrainingConfig`, `PPOOnlineTrainingStep`, and
+  `PPOOnlineTrainingResult` with per-cycle seed progression, aggregate rollout
+  counts, records-used counts, optimizer-step counts, and weighted mean reward.
+- Added `PPOOnlineEvaluationConfig` and `PPOOnlineEvaluationResult` so PPO can
+  run dev-set evaluation rollouts after each cycle and write
+  `eval_rollouts.jsonl` plus `evaluation.json`.
+- The online runner creates one optimizer when the caller does not provide one,
+  preserving optimizer state across cycles instead of rebuilding AdamW each
+  cycle.
+- Added old-policy and old-value snapshot syncing before each cycle, with
+  explicit per-cycle diagnostics for whether each snapshot was synced.
+- Added cycle-scoped artifact directories with rollout JSONL, metrics,
+  checkpoint manifests, Torch state files, evaluation rollouts, and evaluation
+  reports.
+- Added Torch-backed tests for seed progression, config validation, old-policy
+  and old-value sync, repeated optimizer updates, artifact layout, dev
+  evaluation cadence, and policy/value parameter updates.
+
+Phase 6 completion note:
+
+- PPO now has dependency-free reference math, Torch tensor losses, optimizer
+  steps, model/value-head tensor batches, a tensor training loop, model-aware
+  training, state and adapter-style checkpoints, rollout-to-batch conversion,
+  one-cycle training, repeated online cycles, old-policy and old-value snapshot
+  syncing, and dev evaluation cadence.
+- Remaining work now belongs to later named phases: richer
+  evaluation/statistics/dashboarding, self-debug rollout mode, and final
+  paper-ready packaging.
 
 ## Phase 7: Evaluation, Statistics, And Dashboard
 
