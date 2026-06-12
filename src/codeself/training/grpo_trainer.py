@@ -27,6 +27,7 @@ class GRPOModelTrainingConfig:
     pad_token_id: int = 0
     device: str | None = None
     dtype: str = "fp32"
+    microbatch_size: int = 0
 
     def __post_init__(self) -> None:
         if self.max_batches is not None and self.max_batches <= 0:
@@ -35,6 +36,8 @@ class GRPOModelTrainingConfig:
             raise ValueError("pad_token_id must be non-negative")
         if self.dtype not in {"fp32", "fp16", "bf16"}:
             raise ValueError("dtype must be fp32, fp16, or bf16")
+        if self.microbatch_size < 0:
+            raise ValueError("microbatch_size must be non-negative")
 
     def loop_config(self) -> GRPOTrainingLoopConfig:
         return GRPOTrainingLoopConfig(
@@ -56,6 +59,7 @@ class GRPOModelTrainingConfig:
             "pad_token_id": self.pad_token_id,
             "device": self.device,
             "dtype": self.dtype,
+            "microbatch_size": self.microbatch_size,
         }
 
 
@@ -158,15 +162,27 @@ def run_grpo_model_training(
             pad_token_id=train_config.pad_token_id,
         )
 
-    from codeself.training.grpo_loop import run_grpo_training_loop
+    if train_config.microbatch_size > 0:
+        from codeself.training.grpo_loop import run_grpo_microbatched_training_loop
 
-    loop_result = run_grpo_training_loop(
-        batches,
-        tensor_batch_builder=tensor_batch_builder,
-        optimizer=active_optimizer,
-        scheduler=scheduler,
-        config=train_config.loop_config(),
-    )
+        loop_result = run_grpo_microbatched_training_loop(
+            batches,
+            tensor_batch_builder=tensor_batch_builder,
+            microbatch_size=train_config.microbatch_size,
+            optimizer=active_optimizer,
+            scheduler=scheduler,
+            config=train_config.loop_config(),
+        )
+    else:
+        from codeself.training.grpo_loop import run_grpo_training_loop
+
+        loop_result = run_grpo_training_loop(
+            batches,
+            tensor_batch_builder=tensor_batch_builder,
+            optimizer=active_optimizer,
+            scheduler=scheduler,
+            config=train_config.loop_config(),
+        )
     checkpoint_artifacts = (
         _write_state_checkpoint(
             torch,

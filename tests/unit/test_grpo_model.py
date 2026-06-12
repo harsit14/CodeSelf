@@ -40,13 +40,18 @@ class GRPOModelForwardTests(unittest.TestCase):
 
         self.assertEqual(tuple(logprobs.shape), (1, 3))
         self.assertEqual(float(logprobs[0, 0].item()), 0.0)
+        # The memory-efficient gather (selected - logsumexp) is mathematically
+        # equal to log_softmax().gather() but differs in float32 rounding at
+        # ~1e-7, so compare at float-precision tolerance.
         self.assertAlmostEqual(
             float(logprobs[0, 1].item()),
             torch.log_softmax(logits[0, 0], dim=-1)[2].item(),
+            places=5,
         )
         self.assertAlmostEqual(
             float(logprobs[0, 2].item()),
             torch.log_softmax(logits[0, 1], dim=-1)[3].item(),
+            places=5,
         )
 
     def test_pad_training_batch_tensors_pads_inputs_and_recorded_logprobs(self) -> None:

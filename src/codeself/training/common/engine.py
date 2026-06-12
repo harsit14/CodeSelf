@@ -279,6 +279,116 @@ class TransformersModelEngine:
             metadata={"engine": "transformers"},
         )
 
+    def generate_batch(self, requests: Sequence[GenerationRequest]) -> list[GeneratedSequence]:
+        """Generate responses for many prompts in one padded forward pass.
+
+        Requests are bucketed by ``max_new_tokens`` and each bucket is run as a
+        single left-padded batch, which is far faster than per-sample calls on
+        MPS/GPU. Each row samples independently, giving the within-group
+        diversity GRPO relies on. Results are returned in input order.
+        """
+
+        request_list = list(requests)
+        if not request_list:
+            return []
+        results: list[GeneratedSequence | None] = [None] * len(request_list)
+        buckets: dict[tuple[int, float, float, bool], list[int]] = {}
+        for index, request in enumerate(request_list):
+            key = (
+                request.max_new_tokens,
+                request.temperature,
+                request.top_p,
+                request.temperature > 0,
+            )
+            buckets.setdefault(key, []).append(index)
+        for (max_new_tokens, temperature, top_p, do_sample), indices in buckets.items():
+            seed = next(
+                (request_list[i].seed for i in indices if request_list[i].seed is not None),
+                None,
+            )
+            if seed is not None:
+                self._torch.manual_seed(seed)
+            prompts = [request_list[i].prompt for i in indices]
+            sequences = self._generate_padded_batch(
+                prompts,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                do_sample=do_sample,
+            )
+            for position, sequence in zip(indices, sequences, strict=True):
+                results[position] = sequence
+        return [sequence for sequence in results if sequence is not None]
+
+    def _generate_padded_batch(
+        self,
+        prompts: list[str],
+        *,
+        max_new_tokens: int,
+        temperature: float,
+        top_p: float,
+        do_sample: bool,
+    ) -> list[GeneratedSequence]:
+        torch = self._torch
+        previous_side = self._raw_tokenizer.padding_side
+        self._raw_tokenizer.padding_side = "left"
+        pad_token_id = self._raw_tokenizer.pad_token_id
+        if pad_token_id is None:
+            pad_token_id = self._raw_tokenizer.eos_token_id
+        try:
+            encoded = self._raw_tokenizer(
+                prompts,
+                return_tensors="pt",
+                add_special_tokens=False,
+                padding=True,
+            )
+        finally:
+            self._raw_tokenizer.padding_side = previous_side
+        encoded = self._move_batch_to_model_device(encoded)
+        padded_prompt_len = int(encoded["input_ids"].shape[-1])
+        generate_kwargs: dict[str, object] = {
+            "max_new_tokens": max_new_tokens,
+            "do_sample": do_sample,
+        }
+        if do_sample:
+            generate_kwargs["temperature"] = temperature
+            generate_kwargs["top_p"] = top_p
+        if pad_token_id is not None:
+            generate_kwargs["pad_token_id"] = pad_token_id
+        with torch.no_grad():
+            output_ids = self._model.generate(**encoded, **generate_kwargs)
+        attention = encoded["attention_mask"]
+        sequences: list[GeneratedSequence] = []
+        for row in range(output_ids.shape[0]):
+            prompt_len = int(attention[row].sum().item())
+            prompt_ids = tuple(
+                int(token_id)
+                for token_id in encoded["input_ids"][row, padded_prompt_len - prompt_len :].tolist()
+            )
+            response_ids = tuple(
+                int(token_id) for token_id in output_ids[row, padded_prompt_len:].tolist()
+            )
+            response_ids = _strip_trailing_pad(response_ids, pad_token_id)
+            input_ids = prompt_ids + response_ids
+            response = self._tokenizer.decode(response_ids)
+            masks = build_prompt_response_mask(
+                token_count=len(input_ids),
+                prompt_token_count=len(prompt_ids),
+                response_token_count=len(response_ids),
+            )
+            finish_reason = "length" if len(response_ids) >= max_new_tokens else "stop"
+            sequences.append(
+                GeneratedSequence(
+                    prompt=prompts[row],
+                    response=response,
+                    input_ids=input_ids,
+                    masks=masks,
+                    finish_reason=finish_reason,
+                    metadata={"engine": "transformers", "batched": True},
+                )
+            )
+        return sequences
+
     def token_logprobs(self, input_ids: Sequence[int]) -> TokenLogprobs:
         ids = tuple(int(token_id) for token_id in input_ids)
         if not ids:
@@ -338,6 +448,15 @@ def build_generated_sequence(
         finish_reason=finish_reason,
         metadata=sequence_metadata,
     )
+
+
+def _strip_trailing_pad(token_ids: tuple[int, ...], pad_token_id: int | None) -> tuple[int, ...]:
+    if pad_token_id is None:
+        return token_ids
+    end = len(token_ids)
+    while end > 0 and token_ids[end - 1] == pad_token_id:
+        end -= 1
+    return token_ids[:end]
 
 
 def _torch_dtype(torch: Any, dtype: str) -> Any:

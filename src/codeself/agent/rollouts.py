@@ -7,11 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from codeself.agent.generation import CodeGenerator, GenerationRequest
+from codeself.agent.generation import CodeGenerator, GenerationRequest, GenerationResult
 from codeself.agent.parser import ParseStatus, ParsedCompletion, extract_code
 from codeself.agent.prompts import PromptTemplate
 from codeself.datasets import TaskSpec
-from codeself.execution import SandboxedTestRunner
+from codeself.execution import ExecutionJob, SandboxedTestRunner
 from codeself.rewards import CompositeRewardScorer, RewardScorer
 
 
@@ -92,10 +92,13 @@ def generate_rollouts(
     scorer: RewardScorer | None = None,
     runner: SandboxedTestRunner | None = None,
     metadata: dict[str, str | int | float | bool] | None = None,
+    execution_workers: int = 4,
 ) -> list[RolloutRecord]:
     active_runner = runner or SandboxedTestRunner()
     active_scorer = scorer or CompositeRewardScorer()
-    records: list[RolloutRecord] = []
+
+    # 1. Build every (task, sample) generation request up front.
+    plan: list[tuple[TaskSpec, str, int, GenerationRequest]] = []
     for task in tasks:
         prompt = prompt_template.render(task)
         for sample_index in range(samples_per_task):
@@ -109,31 +112,59 @@ def generate_rollouts(
                 top_p=top_p,
                 entry_point=task.entry_point,
             )
-            generation = generator.generate(request)
-            parsed = extract_code(generation.text)
-            execution_result = active_runner.run(task, parsed.code, include_hidden=include_hidden)
-            reward = active_scorer.score(execution_result, solution_code=parsed.code)
-            records.append(
-                RolloutRecord(
-                    task_id=task.task_id,
-                    sample_index=sample_index,
-                    prompt_template=prompt_template.name,
-                    prompt=prompt,
-                    raw_completion=generation.text,
-                    parsed=parsed,
-                    backend=generation.backend,
-                    model_name=generation.model_name,
-                    generation_metadata=generation.metadata,
-                    execution=execution_result.to_dict(),
-                    reward=reward.to_dict(),
-                    metadata={
-                        "seed": seed,
-                        "include_hidden": include_hidden,
-                        **(metadata or {}),
-                    },
-                )
+            plan.append((task, prompt, sample_index, request))
+
+    # 2. Generate -- batched in one engine pass when the generator supports it.
+    requests = [item[3] for item in plan]
+    generations = _generate_all(generator, requests)
+
+    # 3. Execute concurrently through the sandbox worker pool, then score.
+    parsed_completions = [extract_code(generation.text) for generation in generations]
+    jobs = [
+        ExecutionJob(task, parsed.code, include_hidden=include_hidden)
+        for (task, _prompt, _index, _request), parsed in zip(plan, parsed_completions, strict=True)
+    ]
+    batch_results = active_runner.run_many(jobs, max_workers=max(1, execution_workers))
+
+    records: list[RolloutRecord] = []
+    for (task, prompt, sample_index, _request), generation, parsed, batch_result in zip(
+        plan, generations, parsed_completions, batch_results, strict=True
+    ):
+        execution_result = batch_result.result
+        reward = active_scorer.score(execution_result, solution_code=parsed.code)
+        records.append(
+            RolloutRecord(
+                task_id=task.task_id,
+                sample_index=sample_index,
+                prompt_template=prompt_template.name,
+                prompt=prompt,
+                raw_completion=generation.text,
+                parsed=parsed,
+                backend=generation.backend,
+                model_name=generation.model_name,
+                generation_metadata=generation.metadata,
+                execution=execution_result.to_dict(),
+                reward=reward.to_dict(),
+                metadata={
+                    "seed": seed,
+                    "include_hidden": include_hidden,
+                    **(metadata or {}),
+                },
             )
+        )
     return records
+
+
+def _generate_all(
+    generator: CodeGenerator,
+    requests: list[GenerationRequest],
+) -> list[GenerationResult]:
+    """Generate all completions, using batched generation when available."""
+
+    batch_fn = getattr(generator, "generate_batch", None)
+    if batch_fn is not None and getattr(generator, "supports_batch_generation", True):
+        return list(batch_fn(requests))
+    return [generator.generate(request) for request in requests]
 
 
 def write_rollouts_jsonl(records: list[RolloutRecord], path: str | Path) -> None:

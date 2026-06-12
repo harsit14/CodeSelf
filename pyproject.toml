@@ -26,8 +26,17 @@ training = [
   "peft",
   "torch",
   "transformers",
-  "trl",
+  "trl"
+]
+# vLLM is a fast-inference backend that does not build on macOS/MPS. It is an
+# optional accelerator for CUDA hosts, kept out of the default training extra
+# so `pip install -e .[training]` works on Apple Silicon.
+vllm = [
   "vllm"
+]
+tracking = [
+  "wandb",
+  "tensorboard"
 ]
 reporting = [
   "duckdb",

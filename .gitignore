@@ -32,3 +32,4 @@ outputs/reports/*
 !outputs/evals/.gitkeep
 !outputs/figures/.gitkeep
 !outputs/reports/.gitkeep
+artifacts/

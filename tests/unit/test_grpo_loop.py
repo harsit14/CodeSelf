@@ -20,6 +20,7 @@ from codeself.training import (  # noqa: E402
     run_grpo_training_loop,
     torch_training_available,
 )
+from codeself.training.grpo_loop import run_grpo_microbatched_training_loop  # noqa: E402
 
 
 class GRPOTrainingLoopTests(unittest.TestCase):
@@ -113,6 +114,101 @@ class GRPOTrainingLoopTests(unittest.TestCase):
                 tensor_batch_builder=_ParameterBatchBuilder(parameter),
                 optimizer=optimizer,
             )
+
+
+class GRPOMicrobatchedLoopTests(unittest.TestCase):
+    @unittest.skipUnless(torch_training_available(), "Torch is an optional training dependency")
+    def test_microbatched_loop_matches_full_batch_update(self) -> None:
+        import torch
+
+        def make_param() -> "torch.nn.Parameter":
+            return torch.nn.Parameter(
+                torch.tensor(
+                    [
+                        [0.0, -1.0, -0.4],
+                        [0.0, -0.8, -0.3],
+                        [0.0, -0.6, -1.0],
+                        [0.0, -0.5, -0.9],
+                    ]
+                )
+            )
+
+        # One 4-sample batch, no KL, no grad clipping: a full-batch update and
+        # a microbatch-of-2 accumulated update must reach the same parameters.
+        batch = assign_group_relative_advantages(
+            TrainingBatch(
+                tuple(_sample(sample_index=i, reward=float(i)) for i in range(4))
+            )
+        ).batch
+        config = GRPOTrainingLoopConfig(
+            optimizer_step=GRPOOptimizerStepConfig(
+                loss=GRPOLossConfig(kl_beta=0.0),
+                max_grad_norm=None,
+            )
+        )
+
+        full_param = make_param()
+        full_opt = torch.optim.SGD([full_param], lr=0.1)
+        run_grpo_training_loop(
+            (batch,),
+            tensor_batch_builder=_IndexedParameterBatchBuilder(full_param),
+            optimizer=full_opt,
+            config=config,
+        )
+
+        micro_param = make_param()
+        micro_opt = torch.optim.SGD([micro_param], lr=0.1)
+        micro_result = run_grpo_microbatched_training_loop(
+            (batch,),
+            tensor_batch_builder=_IndexedParameterBatchBuilder(micro_param),
+            microbatch_size=2,
+            optimizer=micro_opt,
+            config=config,
+        )
+
+        self.assertEqual(micro_result.microbatch_count, 2)
+        self.assertEqual(micro_result.optimizer_step_count, 1)
+        self.assertEqual([s.accumulation_size for s in micro_result.steps], [2, 2])
+        self.assertTrue(
+            torch.allclose(full_param.detach(), micro_param.detach(), atol=1e-6),
+            msg=f"max diff {(full_param - micro_param).abs().max().item()}",
+        )
+
+    def test_microbatched_loop_rejects_nonpositive_size(self) -> None:
+        with self.assertRaises(ValueError):
+            run_grpo_microbatched_training_loop(
+                (),
+                tensor_batch_builder=lambda batch: None,
+                microbatch_size=0,
+                optimizer=object(),
+            )
+
+
+class _IndexedParameterBatchBuilder:
+    """Selects each sample's parameter row by its sample_index.
+
+    Unlike `_ParameterBatchBuilder`, this maps samples to rows correctly when a
+    batch is split into microbatches, so a microbatched run is comparable to a
+    full-batch run.
+    """
+
+    def __init__(self, parameter: object) -> None:
+        self.parameter = parameter
+
+    def __call__(self, batch: TrainingBatch) -> GRPOTensorBatch:
+        import torch
+
+        indices = [sample.sample_index for sample in batch.samples]
+        policy_logprobs = self.parameter[indices]
+        response_mask = torch.zeros_like(policy_logprobs)
+        response_mask[:, 1:] = 1.0
+        return GRPOTensorBatch(
+            policy_logprobs=policy_logprobs,
+            old_policy_logprobs=torch.zeros_like(policy_logprobs),
+            response_mask=response_mask,
+            advantages=torch.tensor([sample.advantage for sample in batch.samples]),
+            reference_logprobs=None,
+        )
 
 
 class _ParameterBatchBuilder:

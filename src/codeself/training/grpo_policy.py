@@ -39,6 +39,36 @@ class ModelEngineCodeGenerator(CodeGenerator):
                 seed=request.seed,
             )
         )
+        return self._result_from_sequence(sequence)
+
+    @property
+    def supports_batch_generation(self) -> bool:
+        return hasattr(self.engine, "generate_batch")
+
+    def generate_batch(
+        self,
+        requests: list[AgentGenerationRequest],
+    ) -> list[GenerationResult]:
+        """Generate many completions in one batched engine forward pass."""
+
+        engine_batch = getattr(self.engine, "generate_batch", None)
+        if engine_batch is None:
+            return [self.generate(request) for request in requests]
+        sequences = engine_batch(
+            [
+                EngineGenerationRequest(
+                    prompt=request.prompt,
+                    max_new_tokens=request.max_new_tokens,
+                    temperature=request.temperature,
+                    top_p=request.top_p,
+                    seed=request.seed,
+                )
+                for request in requests
+            ]
+        )
+        return [self._result_from_sequence(sequence) for sequence in sequences]
+
+    def _result_from_sequence(self, sequence: Any) -> GenerationResult:
         return GenerationResult(
             text=sequence.response,
             backend=self.backend_name,

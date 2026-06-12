@@ -328,6 +328,7 @@ def _build_grpo_model_training_config(config: dict[str, Any]) -> GRPOModelTraini
         pad_token_id=_int_value(config, "training.pad_token_id", default=0),
         device=_optional_str_value(_first_value(config, "training.device", default=None)),
         dtype=_str_value(config, "training.dtype", "model.dtype", default="fp32"),
+        microbatch_size=_int_value(config, "training.microbatch_size", default=0),
     )
 
 

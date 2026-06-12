@@ -172,6 +172,90 @@ def run_grpo_training_loop(
     return GRPOTrainingLoopResult(config=loop_config, steps=tuple(steps))
 
 
+def run_grpo_microbatched_training_loop(
+    batches: Iterable[TrainingBatch],
+    *,
+    tensor_batch_builder: TensorBatchBuilder,
+    microbatch_size: int,
+    optimizer: Any,
+    scheduler: Any | None = None,
+    config: GRPOTrainingLoopConfig | None = None,
+) -> GRPOTrainingLoopResult:
+    """Run GRPO training with microbatched forward+backward accumulation.
+
+    Each logical batch is split into ``microbatch_size``-sample microbatches
+    that are forwarded, loss-scaled, and back-propagated one at a time, so the
+    live autograd graph stays bounded by one microbatch instead of the whole
+    group. Gradients accumulate across the microbatches of a batch and the
+    optimizer steps once per logical batch -- equivalent to a full-batch update
+    but with O(microbatch) peak memory.
+    """
+
+    if microbatch_size <= 0:
+        raise ValueError("microbatch_size must be positive")
+    loop_config = config or GRPOTrainingLoopConfig()
+    selected_batches = _select_batches(batches, loop_config.max_batches)
+    if not selected_batches:
+        raise ValueError("run_grpo_microbatched_training_loop requires at least one batch")
+
+    base_step = loop_config.optimizer_step
+    steps: list[GRPOTrainingLoopStep] = []
+    optimizer_step_index = 0
+    global_step = 0
+    for batch in selected_batches:
+        microbatches = _split_training_batch(batch, microbatch_size)
+        accumulation_size = len(microbatches)
+        for index, microbatch in enumerate(microbatches, start=1):
+            global_step += 1
+            should_step = index == accumulation_size
+            step_config = replace(
+                base_step,
+                gradient_accumulation_steps=accumulation_size,
+                zero_grad=index == 1 and base_step.zero_grad,
+                step_optimizer=should_step and base_step.step_optimizer,
+            )
+            tensor_batch = tensor_batch_builder(microbatch)
+            metrics = run_grpo_optimizer_step(
+                tensor_batch,
+                optimizer=optimizer,
+                config=step_config,
+            )
+            scheduler_step = False
+            if scheduler is not None and should_step and loop_config.step_scheduler:
+                scheduler.step()
+                scheduler_step = True
+            if metrics.optimizer_step:
+                optimizer_step_index += 1
+                current_optimizer_step: int | None = optimizer_step_index
+            else:
+                current_optimizer_step = None
+            steps.append(
+                GRPOTrainingLoopStep(
+                    step=global_step,
+                    accumulation_index=index,
+                    accumulation_size=accumulation_size,
+                    optimizer_step_index=current_optimizer_step,
+                    scheduler_step=scheduler_step,
+                    metrics=metrics,
+                )
+            )
+
+    return GRPOTrainingLoopResult(config=loop_config, steps=tuple(steps))
+
+
+def _split_training_batch(
+    batch: TrainingBatch,
+    microbatch_size: int,
+) -> list[TrainingBatch]:
+    samples = list(batch.samples)
+    if microbatch_size <= 0 or microbatch_size >= len(samples):
+        return [batch]
+    return [
+        TrainingBatch(tuple(samples[start : start + microbatch_size]))
+        for start in range(0, len(samples), microbatch_size)
+    ]
+
+
 def _select_batches(
     batches: Iterable[TrainingBatch],
     max_batches: int | None,

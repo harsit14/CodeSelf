@@ -112,6 +112,7 @@ from codeself.training.grpo_loop import (
     GRPOTrainingLoopResult,
     GRPOTrainingLoopStep,
     TensorBatchBuilder,
+    run_grpo_microbatched_training_loop,
     run_grpo_training_loop,
 )
 from codeself.training.grpo_step import (
@@ -343,6 +344,7 @@ __all__ = [
     "run_grpo_online_training",
     "run_grpo_optimizer_step",
     "run_grpo_rollout_training_cycle",
+    "run_grpo_microbatched_training_loop",
     "run_grpo_training_loop",
     "run_online_training_from_config",
     "run_online_training_from_config_file",
