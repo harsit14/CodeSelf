@@ -80,6 +80,14 @@ from codeself.training.grpo_online import (
     GRPOOnlineTrainingStep,
     run_grpo_online_training,
 )
+from codeself.training.online_config import (
+    OnlineAlgorithm,
+    OnlineTrainingConfig,
+    build_grpo_online_training_config,
+    build_online_training_config,
+    build_ppo_online_training_config,
+    resolve_online_algorithm,
+)
 from codeself.training.grpo_policy import ModelEngineCodeGenerator
 from codeself.training.grpo_model import (
     PaddedTrainingTensors,
@@ -231,6 +239,8 @@ __all__ = [
     "ModelEngineCodeGenerator",
     "ModelRuntimeConfig",
     "OptimizerConfig",
+    "OnlineAlgorithm",
+    "OnlineTrainingConfig",
     "PPOCheckpointArtifact",
     "PPOLossConfig",
     "PPOLossResult",
@@ -295,6 +305,9 @@ __all__ = [
     "build_ppo_training_batch_from_rollouts",
     "build_prompt_response_mask",
     "build_grpo_experiment_matrix",
+    "build_grpo_online_training_config",
+    "build_online_training_config",
+    "build_ppo_online_training_config",
     "build_training_core_config",
     "compare_algorithm_metrics",
     "compute_group_advantages",
@@ -315,6 +328,7 @@ __all__ = [
     "prepare_ppo_value_targets",
     "read_last_metric",
     "require_torch",
+    "resolve_online_algorithm",
     "run_grpo_model_training",
     "run_grpo_online_training",
     "run_grpo_optimizer_step",

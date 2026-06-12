@@ -757,11 +757,26 @@ Third slice shipped:
   trace artifact writing, reward discounting, rollout metadata, and continued
   compatibility with existing training batches.
 
+Fourth slice shipped:
+
+- Added `build_grpo_online_training_config()`,
+  `build_ppo_online_training_config()`, and `build_online_training_config()` so
+  JSON/YAML experiment mappings can become typed online GRPO/PPO configs.
+- Added `resolve_online_algorithm()` for shared GRPO/PPO config dispatch across
+  scripts and tests.
+- Added `scripts/inspect_online_training_config.py`, which loads an experiment
+  config, prints the online-training launch shape, and optionally writes a
+  normalized config JSON artifact.
+- Added `grpo_online_self_debug.example.yaml` and
+  `ppo_online_self_debug.example.yaml` as self-debug online training templates.
+- Added unit coverage for the GRPO builder, PPO builder, example config loading,
+  and the inspector CLI.
+
 Remaining risks:
 
-- The real online trainer configs are typed Python records, but the repository
-  still lacks a CLI config loader for launching GRPO/PPO online training from
-  JSON/YAML experiment files.
+- Online config loading now exists for typed config validation and inspection,
+  but the repository still needs a full model/dataset assembly launcher before
+  GRPO/PPO online training can run end to end from a single experiment file.
 - Model revision uses the same generator backend and sampling settings as the
   initial attempt. Later work should split initial and revision generation
   configs for more precise ablations.

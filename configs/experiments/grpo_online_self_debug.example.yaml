@@ -1,0 +1,48 @@
+algorithm: grpo
+experiment:
+  seed: 20260601
+online:
+  cycles: 2
+  seed_stride: 11
+  sync_old_policy_before_cycle: true
+rollout:
+  mode: self_debug
+  group_size: 4
+  samples_per_task: 4
+  max_prompt_tokens: 1024
+  max_response_tokens: 512
+  temperature: 0.8
+  top_p: 0.95
+self_debug:
+  max_revisions: 1
+  revision_strategy: rule_based
+  revision_prompt_template: self_debug_revision_v1
+  revision_reward_discount: 1.0
+execution:
+  include_hidden: true
+batch:
+  response_source: raw_completion
+  include_failed_parses: true
+  min_reward_std: 0.00000001
+training:
+  max_batches: 8
+  step_scheduler: true
+  dtype: fp32
+  optimizer:
+    learning_rate: 0.000001
+    weight_decay: 0.0
+    warmup_steps: 0
+    gradient_accumulation_steps: 1
+    max_grad_norm: 1.0
+  loss:
+    clip_epsilon: 0.2
+    kl_beta: 0.0
+    max_log_ratio: 20.0
+evaluation:
+  enabled: true
+  samples_per_task: 1
+  max_new_tokens: 512
+  temperature: 0.0
+  top_p: 1.0
+  include_hidden: true
+  ks: [1]
