@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.agent import (  # noqa: E402
+    REVISION_REWARD_DISCOUNT_MODES,
     generate_self_debug_rollouts,
     generate_rollouts,
     get_prompt_template,
@@ -68,6 +69,11 @@ def main() -> int:
     parser.add_argument("--revision-temperature", type=float)
     parser.add_argument("--revision-top-p", type=float)
     parser.add_argument("--revision-reward-discount", type=float)
+    parser.add_argument(
+        "--revision-reward-discount-mode",
+        choices=REVISION_REWARD_DISCOUNT_MODES,
+    )
+    parser.add_argument("--revision-reward-step-penalty", type=float)
     parser.add_argument(
         "--reward-mode",
         choices=(
@@ -254,6 +260,20 @@ def main() -> int:
                     args.revision_reward_discount,
                     config_get(config, "self_debug.revision_reward_discount"),
                     default=1.0,
+                )
+            ),
+            revision_reward_discount_mode=str(
+                _value(
+                    args.revision_reward_discount_mode,
+                    config_get(config, "self_debug.revision_reward_discount_mode"),
+                    default="positive_only",
+                )
+            ),
+            revision_reward_step_penalty=float(
+                _value(
+                    args.revision_reward_step_penalty,
+                    config_get(config, "self_debug.revision_reward_step_penalty"),
+                    default=0.0,
                 )
             ),
         )

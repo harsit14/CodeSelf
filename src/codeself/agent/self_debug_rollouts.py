@@ -22,6 +22,8 @@ from codeself.datasets import TaskSpec
 from codeself.execution import SandboxedTestRunner
 from codeself.rewards import RewardScorer
 
+REVISION_REWARD_DISCOUNT_MODES = ("positive_only", "all", "none")
+
 
 @dataclass(frozen=True)
 class SelfDebugRolloutConfig:
@@ -40,6 +42,8 @@ class SelfDebugRolloutConfig:
     revision_strategy: str = "rule_based"
     revision_prompt_template: str = "self_debug_revision_v1"
     revision_reward_discount: float = 1.0
+    revision_reward_discount_mode: str = "positive_only"
+    revision_reward_step_penalty: float = 0.0
 
     def __post_init__(self) -> None:
         if self.revision_strategy not in {"rule_based", "model", "none"}:
@@ -60,6 +64,11 @@ class SelfDebugRolloutConfig:
             raise ValueError("revision_top_p must be in (0, 1] when set")
         if not 0 < self.revision_reward_discount <= 1:
             raise ValueError("revision_reward_discount must be in (0, 1]")
+        if self.revision_reward_discount_mode not in REVISION_REWARD_DISCOUNT_MODES:
+            joined = ", ".join(REVISION_REWARD_DISCOUNT_MODES)
+            raise ValueError(f"revision_reward_discount_mode must be one of: {joined}")
+        if self.revision_reward_step_penalty < 0:
+            raise ValueError("revision_reward_step_penalty must be non-negative")
 
     def to_agent_loop_config(self) -> AgentLoopConfig:
         return AgentLoopConfig(
@@ -96,6 +105,8 @@ class SelfDebugRolloutConfig:
             "revision_strategy": self.revision_strategy,
             "revision_prompt_template": self.revision_prompt_template,
             "revision_reward_discount": self.revision_reward_discount,
+            "revision_reward_discount_mode": self.revision_reward_discount_mode,
+            "revision_reward_step_penalty": self.revision_reward_step_penalty,
         }
 
     @property
@@ -159,6 +170,8 @@ def generate_self_debug_rollouts(
     revision_strategy: str = "rule_based",
     revision_prompt_template: str = "self_debug_revision_v1",
     revision_reward_discount: float = 1.0,
+    revision_reward_discount_mode: str = "positive_only",
+    revision_reward_step_penalty: float = 0.0,
     scorer: RewardScorer | None = None,
     runner: SandboxedTestRunner | None = None,
     metadata: dict[str, str | int | float | bool] | None = None,
@@ -184,6 +197,8 @@ def generate_self_debug_rollouts(
         revision_strategy=effective_revision_strategy,
         revision_prompt_template=revision_prompt_template,
         revision_reward_discount=revision_reward_discount,
+        revision_reward_discount_mode=revision_reward_discount_mode,
+        revision_reward_step_penalty=revision_reward_step_penalty,
     )
     toolbox = AgentToolbox(runner=runner, scorer=scorer)
     loop = SelfDebugAgentLoop(
@@ -207,6 +222,8 @@ def generate_self_debug_rollouts(
                     trace,
                     sample_index=sample_index,
                     revision_reward_discount=config.revision_reward_discount,
+                    revision_reward_discount_mode=config.revision_reward_discount_mode,
+                    revision_reward_step_penalty=config.revision_reward_step_penalty,
                     metadata=metadata,
                 )
             )
@@ -222,12 +239,19 @@ def rollout_record_from_trace(
     *,
     sample_index: int = 0,
     revision_reward_discount: float = 1.0,
+    revision_reward_discount_mode: str = "positive_only",
+    revision_reward_step_penalty: float = 0.0,
     metadata: dict[str, str | int | float | bool] | None = None,
 ) -> RolloutRecord:
     """Convert the final attempt in an agent trace into a rollout record."""
 
     if not 0 < revision_reward_discount <= 1:
         raise ValueError("revision_reward_discount must be in (0, 1]")
+    if revision_reward_discount_mode not in REVISION_REWARD_DISCOUNT_MODES:
+        joined = ", ".join(REVISION_REWARD_DISCOUNT_MODES)
+        raise ValueError(f"revision_reward_discount_mode must be one of: {joined}")
+    if revision_reward_step_penalty < 0:
+        raise ValueError("revision_reward_step_penalty must be non-negative")
     parsed = extract_code(trace.final_code)
     generation_step = _first_step(trace, "generation")
     generation_metadata = dict(generation_step.metadata) if generation_step else {}
@@ -238,6 +262,8 @@ def rollout_record_from_trace(
         trace.final_reward,
         revision_count=trace.revision_count,
         revision_reward_discount=revision_reward_discount,
+        revision_reward_discount_mode=revision_reward_discount_mode,
+        revision_reward_step_penalty=revision_reward_step_penalty,
     )
     return RolloutRecord(
         task_id=trace.task_id,
@@ -275,6 +301,8 @@ def rollout_record_from_trace(
             "final_passed": trace.final_passed,
             "initial_parse_status": initial_parse_status,
             "revision_reward_discount": revision_reward_discount,
+            "revision_reward_discount_mode": revision_reward_discount_mode,
+            "revision_reward_step_penalty": revision_reward_step_penalty,
             **(metadata or {}),
         },
     )
@@ -285,23 +313,51 @@ def _discounted_reward(
     *,
     revision_count: int,
     revision_reward_discount: float,
+    revision_reward_discount_mode: str,
+    revision_reward_step_penalty: float,
 ) -> dict[str, object]:
     payload = dict(reward)
     raw_reward = _float(payload.get("reward"))
     discount_factor = revision_reward_discount**revision_count
-    discounted_reward = raw_reward * discount_factor if raw_reward > 0 else raw_reward
-    payload["reward"] = discounted_reward
+    discounted_reward = _apply_revision_discount(
+        raw_reward,
+        discount_factor=discount_factor,
+        mode=revision_reward_discount_mode,
+    )
+    step_penalty_total = revision_reward_step_penalty * revision_count
+    shaped_reward = discounted_reward - step_penalty_total
+    payload["reward"] = shaped_reward
     metrics = dict(payload.get("metrics", {})) if isinstance(payload.get("metrics"), dict) else {}
     metrics.update(
         {
             "self_debug_undiscounted_final_reward": raw_reward,
+            "self_debug_discounted_reward_before_penalty": discounted_reward,
             "self_debug_revision_count": revision_count,
             "self_debug_revision_reward_discount": revision_reward_discount,
+            "self_debug_reward_discount_mode": revision_reward_discount_mode,
             "self_debug_discount_factor": discount_factor,
+            "self_debug_revision_step_penalty": revision_reward_step_penalty,
+            "self_debug_step_penalty_total": step_penalty_total,
+            "self_debug_shaped_reward": shaped_reward,
         }
     )
     payload["metrics"] = metrics
     return payload
+
+
+def _apply_revision_discount(
+    raw_reward: float,
+    *,
+    discount_factor: float,
+    mode: str,
+) -> float:
+    if mode == "none":
+        return raw_reward
+    if mode == "all":
+        return raw_reward * discount_factor
+    if mode == "positive_only":
+        return raw_reward * discount_factor if raw_reward > 0 else raw_reward
+    raise ValueError(f"unknown revision reward discount mode: {mode}")
 
 
 def _first_step(trace: AgentTrace, kind: str) -> AgentStep | None:

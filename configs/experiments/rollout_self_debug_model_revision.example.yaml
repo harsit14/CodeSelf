@@ -30,6 +30,8 @@ self_debug:
   revision_temperature: 0.2
   revision_top_p: 0.9
   revision_reward_discount: 0.9
+  revision_reward_discount_mode: positive_only
+  revision_reward_step_penalty: 0.0
 
 execution:
   include_hidden: true

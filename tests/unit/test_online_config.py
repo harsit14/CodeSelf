@@ -45,6 +45,8 @@ class OnlineTrainingConfigBuilderTests(unittest.TestCase):
                 "revision_strategy": "model",
                 "revision_prompt_template": "self_debug_revision_v2",
                 "revision_reward_discount": 0.75,
+                "revision_reward_discount_mode": "all",
+                "revision_reward_step_penalty": 0.05,
                 "revision_max_new_tokens": 96,
                 "revision_temperature": 0.25,
                 "revision_top_p": 0.85,
@@ -99,6 +101,8 @@ class OnlineTrainingConfigBuilderTests(unittest.TestCase):
             "self_debug_revision_v2",
         )
         self.assertAlmostEqual(built.cycle.self_debug.revision_reward_discount, 0.75)
+        self.assertEqual(built.cycle.self_debug.revision_reward_discount_mode, "all")
+        self.assertAlmostEqual(built.cycle.self_debug.revision_reward_step_penalty, 0.05)
         self.assertEqual(built.cycle.self_debug.revision_max_new_tokens, 96)
         self.assertAlmostEqual(built.cycle.self_debug.revision_temperature, 0.25)
         self.assertAlmostEqual(built.cycle.self_debug.revision_top_p, 0.85)

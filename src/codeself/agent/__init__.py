@@ -38,6 +38,7 @@ from codeself.agent.rollouts import (
     write_rollouts_jsonl,
 )
 from codeself.agent.self_debug_rollouts import (
+    REVISION_REWARD_DISCOUNT_MODES,
     SelfDebugRolloutConfig,
     SelfDebugRolloutResult,
     generate_self_debug_rollouts,
@@ -60,6 +61,7 @@ __all__ = [
     "ParseStatus",
     "PromptTemplate",
     "RevisionPromptTemplate",
+    "REVISION_REWARD_DISCOUNT_MODES",
     "RolloutRecord",
     "SELF_DEBUG_REVISION_TEMPLATE",
     "SelfDebugAgentLoop",

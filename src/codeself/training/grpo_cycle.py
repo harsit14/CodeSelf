@@ -236,6 +236,8 @@ def _collect_rollouts(
         revision_strategy=config.self_debug.revision_strategy,
         revision_prompt_template=config.self_debug.revision_prompt_template,
         revision_reward_discount=config.self_debug.revision_reward_discount,
+        revision_reward_discount_mode=config.self_debug.revision_reward_discount_mode,
+        revision_reward_step_penalty=config.self_debug.revision_reward_step_penalty,
         use_rule_based_repair=config.self_debug.revision_strategy == "rule_based",
         scorer=scorer,
         runner=runner,

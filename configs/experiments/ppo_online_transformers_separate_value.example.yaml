@@ -58,6 +58,8 @@ self_debug:
   revision_strategy: rule_based
   revision_prompt_template: self_debug_revision_v1
   revision_reward_discount: 1.0
+  revision_reward_discount_mode: positive_only
+  revision_reward_step_penalty: 0.0
 execution:
   include_hidden: true
 batch:

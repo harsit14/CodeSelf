@@ -215,6 +215,20 @@ def _build_self_debug_config(config: dict[str, Any]) -> SelfDebugCollectionConfi
             "agent.revision_reward_discount",
             default=1.0,
         ),
+        revision_reward_discount_mode=str(
+            _first_value(
+                config,
+                "self_debug.revision_reward_discount_mode",
+                "agent.revision_reward_discount_mode",
+                default="positive_only",
+            )
+        ),
+        revision_reward_step_penalty=_float_value(
+            config,
+            "self_debug.revision_reward_step_penalty",
+            "agent.revision_reward_step_penalty",
+            default=0.0,
+        ),
         revision_max_new_tokens=_optional_int_value(
             _first_value(
                 config,

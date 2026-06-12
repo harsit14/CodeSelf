@@ -862,10 +862,32 @@ Ninth slice shipped:
 - Added tests for separate PPO value-model assembly, old-policy/old-value
   syncing, and value-head checkpoint loading.
 
+Tenth slice shipped:
+
+- Replaced the hardcoded positive-only self-debug reward discount with an
+  explicit `revision_reward_discount_mode`.
+- The default `positive_only` mode preserves existing behavior, while `all`
+  discounts negative and positive final rewards and `none` disables revision
+  discounting for final-reward ablations.
+- Added `revision_reward_step_penalty` so experiments can charge every extra
+  repair attempt, including failed final attempts.
+- Rollout reward metrics now preserve the undiscounted final reward, discounted
+  reward before penalty, discount mode, discount factor, step penalty, total
+  penalty, and final shaped reward.
+- `SelfDebugRolloutConfig`, `SelfDebugCollectionConfig`, GRPO/PPO collection
+  cycles, online config loading, `run_rollouts.py`, and config inspectors all
+  carry the new shaping fields.
+- Updated self-debug rollout and online training templates to make the reward
+  shaping policy explicit.
+- Added tests for all-reward discounting, per-revision penalties, CLI
+  propagation, and online config parsing.
+
 Remaining risks:
 
-- Discounting is intentionally simple: positive final reward is scaled by
-  `discount ** revision_count`, while non-positive outcomes are left unchanged.
+- Phase 8 now has runnable self-debug rollout, model-revision, online training,
+  LoRA launcher, separate PPO critic, and configurable revision reward shaping
+  paths. Remaining self-debug risk is empirical rather than scaffold-level:
+  the chosen shaping policy still needs ablations before paper claims.
 
 ## Phase 9: Documentation And Paper-Ready Package
 

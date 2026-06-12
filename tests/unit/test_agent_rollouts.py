@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.agent import (  # noqa: E402
+    AgentStep,
+    AgentTrace,
     CodeGenerator,
     DIRECT_SOLUTION_TEMPLATE,
     GenerationRequest,
@@ -21,6 +23,7 @@ from codeself.agent import (  # noqa: E402
     generate_self_debug_rollouts,
     generate_rollouts,
     read_rollouts_jsonl,
+    rollout_record_from_trace,
     write_rollouts_jsonl,
 )
 from codeself.datasets import Split, TaskRegistry, TaskSpec, TestSpec  # noqa: E402
@@ -126,19 +129,74 @@ class AgentRolloutTests(unittest.TestCase):
             include_hidden=True,
             max_revisions=1,
             revision_reward_discount=0.5,
+            revision_reward_step_penalty=0.1,
             metadata={"ablation": "self_debug"},
         )
 
         record = result.records[0]
 
         self.assertEqual(len(result.traces), 1)
-        self.assertAlmostEqual(record.reward["reward"], 0.5)
+        self.assertAlmostEqual(record.reward["reward"], 0.4)
+        self.assertEqual(
+            record.reward["metrics"]["self_debug_reward_discount_mode"],
+            "positive_only",
+        )
+        self.assertAlmostEqual(
+            record.reward["metrics"]["self_debug_step_penalty_total"],
+            0.1,
+        )
         self.assertTrue(record.execution["passed"])
         self.assertIn("return x + 1", record.raw_completion)
         self.assertEqual(record.metadata["rollout_mode"], "self_debug")
         self.assertEqual(record.metadata["revision_count"], 1)
+        self.assertEqual(record.metadata["revision_reward_discount_mode"], "positive_only")
+        self.assertAlmostEqual(record.metadata["revision_reward_step_penalty"], 0.1)
         self.assertEqual(record.metadata["ablation"], "self_debug")
         self.assertEqual(result.analysis.final_pass_rate, 1.0)
+
+    def test_self_debug_reward_shaping_can_discount_all_rewards(self) -> None:
+        trace = AgentTrace(
+            task_id="agent/failing",
+            prompt_template="direct_solution_v1",
+            prompt="Write add_one(x).",
+            raw_completion="def add_one(x):\n    return x",
+            initial_code="def add_one(x):\n    return x",
+            final_code="def add_one(x):\n    return x",
+            steps=(
+                AgentStep(
+                    kind="generation",
+                    parsed_status="ok",
+                    metadata={"backend": "static", "model_name": "unit"},
+                ),
+                AgentStep(kind="revision", parsed_status="ok"),
+            ),
+            final_result={"passed": False},
+            final_reward={"reward": -1.0, "metrics": {"original": -1.0}},
+            metadata={
+                "seed": 9,
+                "include_hidden": True,
+                "max_revisions": 1,
+                "use_rule_based_repair": True,
+            },
+        )
+
+        record = rollout_record_from_trace(
+            trace,
+            revision_reward_discount=0.5,
+            revision_reward_discount_mode="all",
+            revision_reward_step_penalty=0.1,
+        )
+
+        self.assertAlmostEqual(record.reward["reward"], -0.6)
+        self.assertAlmostEqual(
+            record.reward["metrics"]["self_debug_discounted_reward_before_penalty"],
+            -0.5,
+        )
+        self.assertEqual(record.reward["metrics"]["self_debug_reward_discount_mode"], "all")
+        self.assertAlmostEqual(
+            record.reward["metrics"]["self_debug_step_penalty_total"],
+            0.1,
+        )
 
     def test_generate_self_debug_rollouts_can_use_model_revision(self) -> None:
         generator = _TwoStageRevisionGenerator()
@@ -268,6 +326,10 @@ class AgentRolloutTests(unittest.TestCase):
                     "0.8",
                     "--revision-reward-discount",
                     "0.5",
+                    "--revision-reward-discount-mode",
+                    "all",
+                    "--revision-reward-step-penalty",
+                    "0.1",
                 ],
                 cwd=ROOT,
                 capture_output=True,
@@ -290,7 +352,17 @@ class AgentRolloutTests(unittest.TestCase):
         self.assertEqual(records[0]["metadata"]["revision_max_new_tokens"], 33)
         self.assertEqual(records[0]["metadata"]["revision_temperature"], 0.25)
         self.assertEqual(records[0]["metadata"]["revision_top_p"], 0.8)
-        self.assertEqual(records[0]["reward"]["reward"], 0.5)
+        self.assertEqual(records[0]["metadata"]["revision_reward_discount_mode"], "all")
+        self.assertEqual(records[0]["metadata"]["revision_reward_step_penalty"], 0.1)
+        self.assertEqual(records[0]["reward"]["reward"], 0.4)
+        self.assertEqual(
+            records[0]["reward"]["metrics"]["self_debug_reward_discount_mode"],
+            "all",
+        )
+        self.assertEqual(
+            records[0]["reward"]["metrics"]["self_debug_step_penalty_total"],
+            0.1,
+        )
         self.assertEqual(len(traces), 1)
         self.assertEqual(traces[0]["metadata"]["revision_max_new_tokens"], 33)
         self.assertIn("rollout_mode: self_debug", completed.stdout)

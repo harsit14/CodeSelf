@@ -69,6 +69,14 @@ def _summary_rows(algorithm: str, online_config: Any) -> tuple[tuple[str, object
         ("self_debug_revision_max_new_tokens", cycle.self_debug.revision_max_new_tokens),
         ("self_debug_revision_temperature", cycle.self_debug.revision_temperature),
         ("self_debug_revision_top_p", cycle.self_debug.revision_top_p),
+        (
+            "self_debug_revision_reward_discount_mode",
+            cycle.self_debug.revision_reward_discount_mode,
+        ),
+        (
+            "self_debug_revision_reward_step_penalty",
+            cycle.self_debug.revision_reward_step_penalty,
+        ),
         ("evaluation_enabled", online_config.evaluation is not None),
         ("sync_old_policy_before_cycle", online_config.sync_old_policy_before_cycle),
     ]
