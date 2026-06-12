@@ -1,0 +1,97 @@
+# Self-debug ablation of grpo_debug_local.yaml: identical except rollouts run
+# the generate -> execute -> feedback -> revise loop (model-generated revisions,
+# 1 round) instead of single-shot. Reward is assigned to the final attempt.
+#
+# Trains a LoRA policy on the 12-task codeself-debug distribution with group
+# sampling, group-relative advantages, a clipped surrogate, and a KL penalty
+# against a frozen reference. Designed to finish in a few minutes on an
+# M5 Pro and to demonstrably move the reward curve.
+#
+#   python3 scripts/build_dataset.py --config configs/datasets/debug.dataset.yaml \
+#     --output data/processed/debug_tasks.jsonl
+#   python3 scripts/run_online_training.py --config configs/experiments/grpo_debug_local.yaml
+experiment:
+  name: grpo_debug_local_self_debug
+  seed: 20260601
+algorithm: grpo
+data:
+  tasks: data/processed/debug_tasks.jsonl
+  split: train
+  eval_split: dev
+  skip_quality_checks: false
+output:
+  dir: artifacts/grpo_debug_local_self_debug
+model:
+  backend: transformers
+  name: Qwen/Qwen3-0.6B-Base
+  tokenizer: Qwen/Qwen3-0.6B-Base
+  dtype: fp16
+  device: mps
+  local_files_only: true
+  trust_remote_code: false
+  gradient_checkpointing: false
+  use_lora: true
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.0
+  lora_target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  full_finetune: false
+  old_policy:
+    enabled: true
+  reference:
+    enabled: true
+prompt:
+  template: direct_solution_v1
+online:
+  cycles: 15
+  sync_old_policy_before_cycle: true
+rollout:
+  mode: self_debug
+  group_size: 8
+  samples_per_task: 8
+  max_prompt_tokens: 512
+  max_response_tokens: 160
+  temperature: 1.0
+  top_p: 0.95
+self_debug:
+  max_revisions: 1
+  revision_strategy: model
+  revision_prompt_template: self_debug_revision_v1
+  revision_reward_discount: 1.0
+  revision_reward_discount_mode: positive_only
+  revision_reward_step_penalty: 0.0
+  revision_max_new_tokens: 160
+  revision_temperature: 0.8
+  revision_top_p: 0.95
+execution:
+  include_hidden: true
+batch:
+  response_source: parsed_code
+  include_failed_parses: true
+  min_reward_std: 0.00000001
+training:
+  max_batches: 1
+  step_scheduler: false
+  device: mps
+  dtype: fp16
+  # Forward passes are microbatched to keep real-vocab activations in MPS
+  # memory; full-group forward would OOM on a 150k-token vocabulary.
+  microbatch_size: 4
+  optimizer:
+    learning_rate: 0.00002
+    weight_decay: 0.0
+    warmup_steps: 0
+    gradient_accumulation_steps: 1
+    max_grad_norm: 1.0
+  loss:
+    clip_epsilon: 0.2
+    kl_beta: 0.01
+    max_log_ratio: 20.0
+evaluation:
+  enabled: true
+  samples_per_task: 4
+  max_new_tokens: 192
+  temperature: 0.8
+  top_p: 0.95
+  include_hidden: true
+  ks: [1, 4]
