@@ -105,11 +105,11 @@ def detect_hidden_test_leaks(tasks: list[TaskSpec]) -> list[HiddenLeakFinding]:
             "public_tests": "\n".join(test.code for test in task.public_tests),
         }
         for test in task.hidden_tests:
-            normalized_hidden = normalize_text(test.code)
+            normalized_hidden = normalize_code(test.code)
             if not normalized_hidden:
                 continue
             for surface_name, surface_text in surfaces.items():
-                if normalized_hidden in normalize_text(surface_text):
+                if normalized_hidden in normalize_code(surface_text):
                     findings.append(
                         HiddenLeakFinding(
                             task_id=task.task_id,
@@ -177,9 +177,25 @@ def detect_train_eval_contamination(
 
 
 def normalize_text(value: str) -> str:
-    """Normalize task text for conservative duplicate checks."""
+    """Normalize prose for conservative near-duplicate prompt checks.
+
+    Aggressively strips punctuation so reworded prompts still match; suitable
+    for prompt/prose comparison, not for code where punctuation is meaningful.
+    """
 
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9_]+", " ", value.lower())).strip()
+
+
+def normalize_code(value: str) -> str:
+    """Normalize code for hidden-test leak detection.
+
+    Collapses whitespace and lowercases but *preserves punctuation*, so two
+    structurally different snippets such as ``[[1], [2], [3]]`` and
+    ``[[1, 2], [3]]`` are not falsely treated as identical (which happens when
+    brackets and commas are stripped).
+    """
+
+    return re.sub(r"\s+", " ", value.lower()).strip()
 
 
 def _task_surface(task: TaskSpec) -> str:

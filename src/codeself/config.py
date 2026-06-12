@@ -125,17 +125,26 @@ def _parse_yaml_list(
         if not content.startswith("- "):
             break
         item_text = content[2:].strip()
+        content_indent = line_indent + 2
         index += 1
-        if item_text == "":
-            if index < len(lines) and lines[index][0] > line_indent:
-                value, index = _parse_yaml_block(lines, index, lines[index][0])
-            else:
-                value = None
-        elif _looks_like_key_value(item_text):
-            key, value_text = _split_yaml_key_value(item_text)
-            value = {key: _parse_yaml_scalar(value_text)}
-        else:
+
+        # Collect any deeper-indented lines belonging to this item, so a
+        # list entry can be a multi-key block mapping (standard YAML).
+        item_lines: list[tuple[int, str]] = [(content_indent, item_text)] if item_text else []
+        while index < len(lines) and lines[index][0] > line_indent:
+            item_lines.append(lines[index])
+            index += 1
+
+        if not item_lines:
+            value: Any = None
+        elif (
+            len(item_lines) == 1
+            and not _looks_like_key_value(item_text)
+            and not item_text.startswith("- ")
+        ):
             value = _parse_yaml_scalar(item_text)
+        else:
+            value, _ = _parse_yaml_block(item_lines, 0, content_indent)
         result.append(value)
     return result, index
 

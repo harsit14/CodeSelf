@@ -1,0 +1,31 @@
+# Versioned dataset config for the CodeSelf debug distribution.
+#
+# 12 self-contained MBPP-style Python function tasks, each with 2 visible
+# (public) example tests and 3-4 held-out (hidden) tests that drive reward
+# and evaluation. Fully reproducible: no network or external benchmark
+# download required. Build with:
+#
+#   python3 scripts/build_dataset.py --config configs/datasets/debug.dataset.yaml \
+#     --output data/processed/debug_tasks.jsonl \
+#     --manifest data/splits/debug_manifest.json
+dataset:
+  name: codeself-debug
+  version: v1
+  seed: 20260601
+  assign_splits: true
+  split_fractions:
+    train: 0.67
+    dev: 0.17
+    test_public: 0.16
+    test_private: 0.0
+  # Debug tasks already declare hidden tests, so auto-splitting is a no-op
+  # here; it stays enabled so configs that point at hidden-less sources
+  # (e.g. raw MBPP with one test) get a held-out reward signal automatically.
+  auto_split_hidden: true
+  visible_tests_per_task: 1
+  near_duplicate_threshold: 0.92
+  enforce_quality_gate: true
+  sources:
+    - format: canonical
+      path: debug_tasks.jsonl
+      source: codeself-debug
