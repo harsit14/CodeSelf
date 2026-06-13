@@ -928,3 +928,60 @@ Remaining risks:
 - The manifest parses model references from known config paths, but paper runs
   still need exact remote model/tokenizer revision pins and hardware/runtime
   metadata captured from the actual training environment.
+
+## Phase 10: Runnable Framework (real model bring-up)
+
+Status: complete
+
+This phase took the scaffold from "never run a real model" to verified
+single-GPU/MPS training, fixing correctness and scaling bugs that the
+tiny-vocab toy tests had hidden. Committed in slices 10.1-10.7.
+
+10.1 Sandbox + reward correctness:
+- Rewrote the static security scan, which had been rejecting idiomatic Python
+  (str.replace, list.remove, getattr) as SECURITY_REJECTED -> reward -1.0,
+  poisoning any RL signal. Now only genuinely dangerous surfaces are blocked.
+- Closed the harness-read cheat: phase/test code is delivered over stdin and
+  never written to disk; a per-run nonce sentinel means os._exit(0) cannot fake
+  a pass; io.FileIO/codecs.open and more socket surfaces blocked at runtime;
+  parent-side RSS memory watchdog for macOS where RLIMIT_AS is unenforceable.
+- Added tests/unit/test_sandbox_adversarial.py (22 escape/abuse vectors).
+- Fixed the 6 launcher tests that errored (instead of skipping) without Torch.
+
+10.2 Data pipeline:
+- Versioned DatasetConfig + build_dataset() with a hard contamination gate
+  (DatasetContaminationError), auto visible/hidden splitting, and a fixed
+  hidden-test leak detector (normalize_code preserves punctuation). Added a
+  self-contained, reproducible 12-task debug distribution.
+
+10.3 Real GRPO:
+- Batched group sampling (TransformersModelEngine.generate_batch).
+- Fixed two OOMs the toy vocab hid: full-vocab log_softmax materialization and
+  single-backward-over-whole-group. Now uses logsumexp gather + a microbatched
+  forward+backward loop (proven equal to the full-batch update).
+- Verified on Qwen3-0.6B-Base/MPS: reward 0.42 -> 0.74, sampled pass 38% ->
+  69%, greedy pass@1 83% -> 92%, KL 0 -> 0.087 over 15 cycles.
+
+10.4 PPO baseline:
+- Mirrored the memory fixes (entropy gather, microbatched loop) onto PPO.
+- bf16 (not fp16) for the value head to avoid overflow->NaN; defensive logits
+  sanitizer. PPO runs stable but does not improve under the identical small-
+  batch cold-critic protocol (reproducible GRPO-vs-PPO comparison).
+
+10.5 Reward-hacking guards + eval:
+- AST-based detection of degenerate output and shortcut solutions (constant
+  functions, lookup tables, echoed expected values) with 0% false positives on
+  real rollouts. Flags logged to rollout metadata; scan CLI added. Difficulty
+  propagated for stratified pass@k.
+
+10.6 Self-debug ablation:
+- Single-shot vs self-debug ablation configs; verified the model-revision loop
+  runs end-to-end on the real policy with trace artifacts.
+
+10.7 Tracking, dashboard, docs:
+- Pluggable W&B/TensorBoard/JSONL trackers (graceful fallback); dashboard
+  rollout browser; manifest runtime-environment (accelerator + library
+  versions) capture; full README rewrite with the real results.
+
+Smoke path preserved: training/smoke/ remains the dependency-free CI path.
+Full suite: 260 pass / 54 skip (dependency-free); 260 pass (torch venv).
