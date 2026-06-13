@@ -57,6 +57,45 @@ class EvaluationDashboardTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             render_evaluation_dashboard(title="empty", evaluations={})
 
+    def test_render_dashboard_includes_rollout_browser(self) -> None:
+        rollouts = {
+            "run": [
+                {
+                    "task_id": "browser/task",
+                    "sample_index": 0,
+                    "parsed": {"code": "def f():\n    return 1"},
+                    "execution": {
+                        "passed": True,
+                        "phases": [
+                            {
+                                "name": "public_tests",
+                                "test_outcomes": [{"status": "passed"}, {"status": "passed"}],
+                            }
+                        ],
+                    },
+                    "reward": {"reward": 1.0, "metrics": {"self_debug_revision_count": 0}},
+                    "metadata": {"difficulty": "easy", "reward_hacking_flagged": False},
+                },
+                {
+                    "task_id": "browser/hack",
+                    "sample_index": 1,
+                    "parsed": {"code": "def f():\n    return 2"},
+                    "execution": {"passed": False, "phases": []},
+                    "reward": {"reward": -0.25, "metrics": {}},
+                    "metadata": {"difficulty": "hard", "reward_hacking_flagged": True},
+                },
+            ]
+        }
+        html = render_evaluation_dashboard(
+            title="browser",
+            evaluations={},
+            rollouts=rollouts,
+        )
+        self.assertIn("Rollout Browser", html)
+        self.assertIn("browser/task", html)
+        self.assertIn("reward-hack flag", html)
+        self.assertIn("2/2 tests passed", html)
+
     def test_render_dashboard_script_writes_html(self) -> None:
         records = (
             _passing_rollouts("dashboard/script-pass")

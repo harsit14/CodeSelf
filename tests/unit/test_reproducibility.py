@@ -13,9 +13,29 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from codeself.reporting import (  # noqa: E402
     build_reproducibility_manifest,
+    capture_runtime_environment,
     collect_artifacts,
     write_reproducibility_archive,
 )
+
+
+class RuntimeEnvironmentTests(unittest.TestCase):
+    def test_capture_runtime_environment_reports_hardware(self) -> None:
+        env = capture_runtime_environment()
+        self.assertTrue(env.machine)
+        self.assertIn(env.accelerator.split(":", 1)[0], {"cpu", "cuda", "mps"})
+        self.assertIsInstance(env.library_versions, dict)
+        payload = env.to_dict()
+        self.assertIn("accelerator", payload)
+        self.assertIn("library_versions", payload)
+
+    def test_manifest_embeds_runtime_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manifest = build_reproducibility_manifest(tmpdir)
+            payload = json.loads(manifest.to_json())
+            self.assertIn("runtime_environment", payload)
+            self.assertIn("accelerator", payload["runtime_environment"])
+            self.assertIn("Accelerator:", manifest.to_markdown())
 
 
 class ReproducibilityTests(unittest.TestCase):

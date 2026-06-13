@@ -165,6 +165,72 @@ class CheckpointArtifactReference:
 
 
 @dataclass(frozen=True)
+class RuntimeEnvironment:
+    """Hardware and key library versions captured at manifest time.
+
+    Probed defensively: optional training libraries are reported when present
+    and omitted otherwise, so capturing the environment never requires Torch.
+    """
+
+    machine: str
+    processor: str
+    cpu_count: int | None
+    accelerator: str
+    library_versions: dict[str, str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "machine": self.machine,
+            "processor": self.processor,
+            "cpu_count": self.cpu_count,
+            "accelerator": self.accelerator,
+            "library_versions": dict(self.library_versions),
+        }
+
+
+def capture_runtime_environment() -> RuntimeEnvironment:
+    """Capture hardware and library versions without importing heavy deps eagerly."""
+
+    import importlib
+    import os
+
+    accelerator = "cpu"
+    library_versions: dict[str, str] = {}
+    for package in ("torch", "transformers", "peft", "accelerate", "numpy", "trl"):
+        try:
+            module = importlib.import_module(package)
+        except Exception:
+            continue
+        version = getattr(module, "__version__", None)
+        if version is not None:
+            library_versions[package] = str(version)
+
+    torch_module = None
+    try:
+        torch_module = importlib.import_module("torch")
+    except Exception:
+        torch_module = None
+    if torch_module is not None:
+        try:
+            if torch_module.cuda.is_available():
+                accelerator = f"cuda:{torch_module.version.cuda}"
+            elif getattr(torch_module.backends, "mps", None) is not None and (
+                torch_module.backends.mps.is_available()
+            ):
+                accelerator = "mps"
+        except Exception:
+            accelerator = "cpu"
+
+    return RuntimeEnvironment(
+        machine=platform.machine(),
+        processor=platform.processor() or platform.machine(),
+        cpu_count=os.cpu_count(),
+        accelerator=accelerator,
+        library_versions=library_versions,
+    )
+
+
+@dataclass(frozen=True)
 class ReproducibilityManifest:
     """Public metadata needed to reproduce a CodeSelf run."""
 
@@ -173,6 +239,7 @@ class ReproducibilityManifest:
     package_version: str
     python_version: str
     platform: str
+    runtime_environment: RuntimeEnvironment
     git_revision: str | None
     git_status_short: tuple[str, ...]
     artifact_count: int
@@ -193,6 +260,7 @@ class ReproducibilityManifest:
             "package_version": self.package_version,
             "python_version": self.python_version,
             "platform": self.platform,
+            "runtime_environment": self.runtime_environment.to_dict(),
             "git_revision": self.git_revision,
             "git_status_short": list(self.git_status_short),
             "artifact_count": self.artifact_count,
@@ -251,6 +319,9 @@ class ReproducibilityManifest:
             f"- Package version: {self.package_version}\n"
             f"- Python: {self.python_version}\n"
             f"- Platform: {self.platform}\n"
+            f"- Accelerator: {self.runtime_environment.accelerator}\n"
+            f"- CPU count: {self.runtime_environment.cpu_count}\n"
+            f"- Library versions: {_library_versions_inline(self.runtime_environment)}\n"
             f"- Git revision: {self.git_revision or 'unavailable'}\n"
             f"- Artifact count: {self.artifact_count}\n\n"
             "## Git Status\n\n"
@@ -415,6 +486,7 @@ def build_reproducibility_manifest(
         package_version=_package_version(root_path),
         python_version=sys.version.split()[0],
         platform=platform.platform(),
+        runtime_environment=capture_runtime_environment(),
         git_revision=_git_output(root_path, "rev-parse", "HEAD"),
         git_status_short=tuple(_git_status(root_path)),
         artifact_count=len(artifacts),
@@ -625,6 +697,15 @@ def _artifact_markdown(artifacts: tuple[FileArtifact, ...]) -> str:
     return "\n".join(
         f"- `{artifact.path}` ({artifact.bytes} bytes, sha256 `{artifact.sha256}`)"
         for artifact in artifacts
+    )
+
+
+def _library_versions_inline(environment: RuntimeEnvironment) -> str:
+    if not environment.library_versions:
+        return "none captured"
+    return ", ".join(
+        f"{name}={version}"
+        for name, version in sorted(environment.library_versions.items())
     )
 
 

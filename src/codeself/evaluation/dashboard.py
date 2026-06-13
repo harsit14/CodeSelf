@@ -31,11 +31,13 @@ def render_evaluation_dashboard(
     evaluations: Mapping[str, JsonMapping],
     comparisons: Mapping[str, JsonMapping] | None = None,
     curves: Mapping[str, JsonMapping] | None = None,
+    rollouts: Mapping[str, list[JsonMapping]] | None = None,
 ) -> str:
     """Render a static dashboard from evaluation and comparison JSON payloads."""
 
-    if not evaluations and not comparisons and not curves:
-        raise ValueError("dashboard requires at least one report or curve")
+    rollout_payloads = rollouts or {}
+    if not evaluations and not comparisons and not curves and not rollout_payloads:
+        raise ValueError("dashboard requires at least one report, curve, or rollout set")
     comparison_payloads = comparisons or {}
     curve_payloads = curves or {}
     safe_title = _escape(title)
@@ -59,6 +61,8 @@ def render_evaluation_dashboard(
         parts.extend(_render_comparison_section(comparison_payloads))
     if curve_payloads:
         parts.extend(_render_curve_section(curve_payloads))
+    if rollout_payloads:
+        parts.extend(_render_rollout_browser(rollout_payloads))
     parts.extend(["</main>", "</body>", "</html>"])
     return "\n".join(parts) + "\n"
 
@@ -70,6 +74,7 @@ def write_evaluation_dashboard(
     evaluations: Mapping[str, JsonMapping],
     comparisons: Mapping[str, JsonMapping] | None = None,
     curves: Mapping[str, JsonMapping] | None = None,
+    rollouts: Mapping[str, list[JsonMapping]] | None = None,
 ) -> None:
     """Write a static HTML dashboard file."""
 
@@ -81,9 +86,70 @@ def write_evaluation_dashboard(
             evaluations=evaluations,
             comparisons=comparisons,
             curves=curves,
+            rollouts=rollouts,
         ),
         encoding="utf-8",
     )
+
+
+def _render_rollout_browser(rollouts: Mapping[str, list[JsonMapping]]) -> list[str]:
+    """Render a collapsible browser of individual sampled programs.
+
+    Each rollout shows its task, sample index, reward, pass/fail, any
+    reward-hacking flag, the generated code, and (when present) a compact
+    summary of per-test outcomes and the self-debug revision count.
+    """
+
+    output = ['<section class="band">', "<h2>Rollout Browser</h2>"]
+    for label, records in rollouts.items():
+        output.append(f"<h3>{_escape(label)} ({len(records)} rollouts)</h3>")
+        for record in records:
+            task_id = _escape(str(record.get("task_id", "?")))
+            sample_index = _escape(str(record.get("sample_index", "?")))
+            reward = _format_cell(_lookup(record, "reward.reward"))
+            execution = record.get("execution") if isinstance(record, dict) else {}
+            passed = bool(execution.get("passed")) if isinstance(execution, dict) else False
+            metadata = record.get("metadata") if isinstance(record, dict) else {}
+            flagged = bool(metadata.get("reward_hacking_flagged")) if isinstance(metadata, dict) else False
+            difficulty = _escape(str(metadata.get("difficulty", "?"))) if isinstance(metadata, dict) else "?"
+            revisions = (
+                _lookup(record, "reward.metrics.self_debug_revision_count")
+                if isinstance(record, dict)
+                else None
+            )
+            status = "pass" if passed else "fail"
+            badges = [f'<span class="badge {status}">{status}</span>']
+            if flagged:
+                badges.append('<span class="badge flag">reward-hack flag</span>')
+            if revisions is not None:
+                badges.append(f'<span class="badge">revisions: {_format_cell(revisions)}</span>')
+            code = _escape(str(_lookup(record, "parsed.code") or ""))
+            test_summary = _escape(_test_outcome_summary(execution))
+            output.append(
+                "<details class='rollout'>"
+                f"<summary>{task_id} · sample {sample_index} · "
+                f"reward {reward} · {difficulty} {''.join(badges)}</summary>"
+                f"<pre class='code'>{code}</pre>"
+                f"<p class='tests'>{test_summary}</p>"
+                "</details>"
+            )
+    output.append("</section>")
+    return output
+
+
+def _test_outcome_summary(execution: object) -> str:
+    if not isinstance(execution, dict):
+        return ""
+    parts: list[str] = []
+    for phase in execution.get("phases", []):
+        if not isinstance(phase, dict):
+            continue
+        outcomes = phase.get("test_outcomes") or []
+        if not outcomes:
+            continue
+        passed = sum(1 for o in outcomes if isinstance(o, dict) and o.get("status") == "passed")
+        parts.append(f"{phase.get('name', 'phase')}: {passed}/{len(outcomes)} tests passed")
+    return " · ".join(parts) if parts else "no per-test outcomes recorded"
 
 
 def _render_evaluation_section(evaluations: Mapping[str, JsonMapping]) -> list[str]:
@@ -639,6 +705,38 @@ h3 {
   border: 1px solid var(--line);
   border-radius: 6px;
 }
+.rollout {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 6px 0;
+  padding: 6px 10px;
+}
+.rollout summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.rollout .code {
+  background: rgba(127, 127, 127, 0.08);
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.rollout .tests {
+  font-size: 12px;
+  color: #555;
+}
+.badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: rgba(127, 127, 127, 0.15);
+}
+.badge.pass { background: rgba(40, 160, 90, 0.2); }
+.badge.fail { background: rgba(200, 70, 70, 0.2); }
+.badge.flag { background: rgba(210, 150, 40, 0.25); }
 table {
   width: 100%;
   border-collapse: collapse;

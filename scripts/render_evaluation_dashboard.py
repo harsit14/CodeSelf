@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from codeself.agent import read_rollouts_jsonl  # noqa: E402
 from codeself.evaluation import (  # noqa: E402
     collect_learning_curve,
     read_dashboard_json,
@@ -42,13 +43,27 @@ def main() -> int:
         metavar="LABEL=ARTIFACT_DIR",
         help="Online training artifact directory with cycle_* children.",
     )
+    parser.add_argument(
+        "--rollouts",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help="Rollout JSONL to browse. May be passed multiple times.",
+    )
+    parser.add_argument(
+        "--max-rollouts",
+        type=int,
+        default=100,
+        help="Cap rollouts shown per browser label.",
+    )
     args = parser.parse_args()
 
     evaluations = _read_labeled_reports(args.evaluation)
     comparisons = _read_labeled_reports(args.comparison)
     curves = _read_labeled_curves(args.curve)
-    if not evaluations and not comparisons and not curves:
-        parser.error("provide at least one --evaluation, --comparison, or --curve")
+    rollouts = _read_labeled_rollouts(args.rollouts, args.max_rollouts)
+    if not evaluations and not comparisons and not curves and not rollouts:
+        parser.error("provide at least one --evaluation, --comparison, --curve, or --rollouts")
 
     write_evaluation_dashboard(
         args.output,
@@ -56,12 +71,25 @@ def main() -> int:
         evaluations=evaluations,
         comparisons=comparisons,
         curves=curves,
+        rollouts=rollouts,
     )
     print(f"wrote evaluation dashboard to {args.output}")
     print(f"evaluation_reports: {len(evaluations)}")
     print(f"comparison_reports: {len(comparisons)}")
     print(f"curve_reports: {len(curves)}")
+    print(f"rollout_sets: {len(rollouts)}")
     return 0
+
+
+def _read_labeled_rollouts(values: list[str], limit: int) -> dict[str, list[dict[str, object]]]:
+    rollouts: dict[str, list[dict[str, object]]] = {}
+    for value in values:
+        label, path = _parse_labeled_path(value)
+        if label in rollouts:
+            raise ValueError(f"duplicate rollout label: {label}")
+        records = [record.to_dict() for record in read_rollouts_jsonl(path)][:limit]
+        rollouts[label] = records
+    return rollouts
 
 
 def _read_labeled_reports(values: list[str]) -> dict[str, dict[str, object]]:
