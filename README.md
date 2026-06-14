@@ -1,117 +1,146 @@
 # CodeSelf
 
-CodeSelf is a runnable research framework for **execution-feedback reinforcement
-learning** on Python coding tasks. The central question is deliberately bounded:
+CodeSelf is a Python research project for training coding agents with
+execution feedback. It generates solutions for programming tasks, runs them in
+a restricted sandbox, scores the results, and turns those rollouts into GRPO or
+PPO training batches.
 
-> Can a small coding policy measurably improve on a declared task distribution
-> after practicing against sandboxed tests and structured feedback?
+The goal is practical and measurable: can a small coding model improve after
+practicing on a known task distribution with real tests and reward signals?
 
-The framework runs end to end on a single GPU (or an Apple-Silicon laptop):
-dataset ingestion with a contamination gate, a hardened sandbox, correctness-first
-rewards with reward-hacking guards, batched rollout sampling, **real GRPO and PPO
-LoRA training** on an open model, held-out evaluation with paired statistics,
-experiment tracking, dashboards, and reproducibility manifests.
+## What It Does
 
-A dependency-free **smoke path** stays fast for CI; installing the optional
-training extra unlocks real model training.
+| Stage | What happens |
+| --- | --- |
+| Dataset | Load Python coding tasks from canonical JSONL, MBPP-style files, or HumanEval-style files. |
+| Generation | Produce candidate Python solutions with a mock, static, or Transformers-backed generator. |
+| Execution | Run syntax checks, static security checks, public tests, and hidden tests in an isolated subprocess. |
+| Rewards | Score correctness, partial credit, failures, parse errors, and execution outcomes. |
+| Training | Build GRPO/PPO batches with response-token masks, advantages, KL penalties, and optimizer steps. |
+| Evaluation | Report pass@k, reward summaries, paired comparisons, learning curves, and static dashboards. |
 
-## Research question and result
+## Results Snapshot
 
-On the bundled 12-task `codeself-debug` distribution, training
-**Qwen2.5-Coder / Qwen3-0.6B-class** policies with LoRA for 15 online cycles on
-an Apple M-series laptop (MPS):
+These tables are small sanity checks, not public benchmark claims. They are
+included so readers can quickly understand what the pipeline produces.
 
-| Metric | GRPO | PPO (same protocol) |
-| --- | --- | --- |
-| Train reward (first 3 → last 3 cycles) | 0.42 → **0.74** | 0.35 → 0.24 |
-| Sampled pass-rate (temp 1.0) | 38% → **69%** | ~35% (flat) |
-| Greedy pass@1 (held-out) | 83% → **92%** | — |
-| KL to frozen reference | 0 → 0.087 | finite, stable |
+### No-Dependency Smoke Run
 
-GRPO moves the policy clearly; PPO is stable (finite grad norms, decreasing
-value loss, no collapse) but does not improve under the identical small-batch,
-cold-critic protocol — a reproducible algorithm comparison, consistent with
-PPO's higher sample/warmup requirements for LLM RL.
+Reproducible with the checked-in example task and mock generator:
 
-> These are debug-scale numbers for validating the pipeline, not a benchmark
-> claim. Scale the dataset and cycles for paper-grade results.
+```bash
+python3 scripts/run_rollouts.py \
+  --tasks configs/datasets/tasks.example.jsonl \
+  --output outputs/rollouts/readme_smoke_mock.jsonl \
+  --backend mock \
+  --samples-per-task 4 \
+  --seed 20260601 \
+  --skip-data-quality-checks
+
+python3 scripts/evaluate_rollouts.py \
+  --rollouts outputs/rollouts/readme_smoke_mock.jsonl \
+  --output outputs/reports/readme_smoke_eval.md \
+  --ks 1,2,4
+```
+
+| Metric | Value |
+| --- | ---: |
+| Tasks | 1 |
+| Rollouts | 4 |
+| Execution pass rate | 75% |
+| Mean reward | 0.85 |
+| Parse failure rate | 0% |
+| Degenerate output rate | 0% |
+| pass@1 | 75% |
+| pass@2 | 100% |
+| pass@4 | 100% |
+
+### Small Debug Training Run
+
+The debug configs train on the self-contained `codeself-debug` dataset with 8
+training tasks and 2 dev tasks. The run below used the provided
+Transformers + LoRA path for 15 online cycles.
+
+| Algorithm | Train reward | Train pass rate | Dev reward | Dev pass@1 | Note |
+| --- | ---: | ---: | ---: | ---: | --- |
+| GRPO | 0.33 -> 0.74 | 38% -> 66% | 0.72 -> 0.84 | 75% -> 88% | Clear improvement on the debug run. |
+| PPO | 0.38 -> 0.26 | 44% -> 30% | 0.49 -> 0.46 | 50% -> 50% | Stable, but no lift in this tiny setting. |
+
+Use these numbers as a pipeline demonstration. For benchmark-grade claims, run
+larger datasets, fixed model revisions, repeated seeds, and held-out evaluation.
 
 ## Architecture
 
 ```text
-Task JSONL  (versioned dataset config + contamination gate)
-   │
-   ├─ prompt template ─► batched rollout sampling (policy engine)
-   │                         │
-   │                    sandboxed execution (process jail, rlimits, no net)
-   │                         │
-   │                    reward scorer (+ reward-hacking flags)
-   │                         │
-   │                    rollout records / self-debug traces
-   │                         │
-   │                ┌────────┴─────────┐
-   │            GRPO batch          PPO batch
-   │          group-relative      GAE + value head
-   │          advantages          clipped value loss
-   │                └────────┬─────────┘
-   │                  microbatched forward+backward (memory-bounded)
-   │                  clipped PG loss + KL to frozen reference
-   │                         │
-   └──────────────►  online cycle: collect → execute → score → optimize
-                             │
-                       checkpoints · metrics · dev eval
-                             │
-        pass@k · paired bootstrap / permutation · effect sizes
-                             │
-              dashboards · trackers (W&B/TensorBoard/JSONL) · manifests
+Task JSONL
+  -> prompt template
+  -> code generator or model engine
+  -> sandboxed execution
+  -> reward scorer
+  -> rollout JSONL
+  -> GRPO / PPO batch builder
+  -> optimizer step
+  -> evaluation reports and dashboard
 ```
 
-Core packages:
+Core package layout:
 
-```text
-src/codeself/datasets/     Task schema, loaders, versioned dataset configs, contamination gate.
-src/codeself/execution/    Static scan, subprocess jail, Docker runner, per-test outcomes.
-src/codeself/rewards/      Correctness/configurable rewards, reward-hacking detection.
-src/codeself/agent/        Prompting, parsing, batched rollouts, self-debug traces.
-src/codeself/training/     GRPO/PPO losses, model-forward batches, microbatched loops, online cycles.
-src/codeself/evaluation/   pass@k, paired stats, learning curves, dashboard renderer.
-src/codeself/tracking/     Pluggable experiment trackers (W&B / TensorBoard / JSONL).
-src/codeself/reporting/    Reproducibility manifest with hardware + library capture.
-```
-
-## Install
-
-Python 3.11+. The smoke path needs no third-party dependencies.
-
-```bash
-# Smoke / CI only:
-python3 -m unittest discover -s tests
-
-# Real training (Torch + Transformers + PEFT + Accelerate):
-pip install -e '.[training]'
-
-# Optional: experiment tracking and heavier analysis
-pip install -e '.[tracking]'    # wandb, tensorboard
-pip install -e '.[reporting]'   # pandas, plotly, scipy, duckdb
-```
-
-`vllm` is a separate extra (`.[vllm]`) because it does not build on macOS/MPS.
+| Path | Purpose |
+| --- | --- |
+| `src/codeself/datasets/` | Task schemas, loaders, split manifests, quality checks. |
+| `src/codeself/execution/` | Security scan, subprocess sandbox, Docker runner, per-test outcomes. |
+| `src/codeself/rewards/` | Correctness and configurable reward modes. |
+| `src/codeself/agent/` | Prompts, parsing, rollout records, self-debug traces. |
+| `src/codeself/training/` | GRPO/PPO losses, model wrappers, online cycles, smoke trainers. |
+| `src/codeself/evaluation/` | pass@k, paired statistics, learning curves, dashboard rendering. |
+| `src/codeself/tracking/` | JSONL, TensorBoard, and W&B metric adapters. |
+| `src/codeself/reporting/` | Reproducibility manifests and artifact summaries. |
 
 ## Quickstart
 
-### 1. Smoke (no model, no GPU — the CI path)
+Python 3.11+ is recommended. The smoke path uses only the standard library.
 
 ```bash
-python3 -m unittest discover -s tests
-python3 scripts/run_rollouts.py --tasks configs/datasets/tasks.example.jsonl \
-  --output outputs/rollouts/mock.jsonl --backend mock --samples-per-task 4
-python3 scripts/evaluate_rollouts.py --rollouts outputs/rollouts/mock.jsonl \
-  --output outputs/reports/mock_eval.md
+git clone https://github.com/harsit14/CodeSelf.git
+cd CodeSelf
+
+python3 scripts/run_rollouts.py \
+  --tasks configs/datasets/tasks.example.jsonl \
+  --output outputs/rollouts/mock.jsonl \
+  --backend mock \
+  --samples-per-task 4 \
+  --skip-data-quality-checks
+
+python3 scripts/evaluate_rollouts.py \
+  --rollouts outputs/rollouts/mock.jsonl \
+  --output outputs/reports/mock_eval.md \
+  --ks 1,2,4
 ```
 
-### 2. Debug (real model, ~10 tasks, single GPU / MPS)
+For development checks:
 
-Build the self-contained debug dataset, then train:
+```bash
+python3 -m unittest \
+  tests.unit.test_execution \
+  tests.unit.test_rewards \
+  tests.unit.test_evaluation \
+  tests.unit.test_training_common
+```
+
+## Optional Training Setup
+
+Install the optional training dependencies when you want to use real models:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[training]'
+```
+
+The debug configs default to `Qwen/Qwen3-0.6B-Base` and can also point at any
+compatible causal language model path.
+
+Build the debug dataset and start a GRPO run:
 
 ```bash
 python3 scripts/build_dataset.py \
@@ -120,82 +149,36 @@ python3 scripts/build_dataset.py \
   --manifest data/splits/debug_manifest.json
 
 python3 scripts/run_online_training.py \
-  --config configs/experiments/grpo_debug_local.yaml      # GRPO
-python3 scripts/run_online_training.py \
-  --config configs/experiments/ppo_debug_local.yaml       # PPO comparison
+  --config configs/experiments/grpo_debug_local.yaml
 ```
 
-Self-debug ablation (generate → execute → revise):
+Run the matching PPO comparison:
 
 ```bash
 python3 scripts/run_online_training.py \
-  --config configs/experiments/grpo_debug_local_self_debug.yaml
+  --config configs/experiments/ppo_debug_local.yaml
 ```
 
-### 3. Full single-GPU run
+## Reports And Dashboards
 
-Copy a debug config, point `data.tasks` at a larger built distribution, raise
-`online.cycles` / `rollout.group_size`, and (on CUDA) switch `model.dtype` to
-`bf16`. The Transformers launch templates under `configs/experiments/` are
-starting points. Pin exact model/tokenizer revisions before treating any run as
-reproducible.
-
-## Inspect, track, and audit a run
+Create an evaluation report:
 
 ```bash
-# Learning curves, baseline-vs-final, per-task tables → portable HTML
+python3 scripts/evaluate_rollouts.py \
+  --rollouts outputs/rollouts/mock.jsonl \
+  --output outputs/reports/mock_eval.md \
+  --ks 1,2,4
+```
+
+Render a static dashboard from rollout or evaluation files:
+
+```bash
 python3 scripts/render_evaluation_dashboard.py \
-  --curve grpo=artifacts/grpo_debug_local \
-  --curve ppo=artifacts/ppo_debug_local \
+  --rollouts smoke=outputs/rollouts/mock.jsonl \
   --output outputs/reports/dashboard.html
-
-# Push metrics to W&B / TensorBoard / JSONL (auto-fallback to JSONL)
-python3 scripts/track_run.py --artifact-dir artifacts/grpo_debug_local --backend wandb
-
-# Audit rollouts for reward hacking / degenerate outputs
-python3 scripts/scan_reward_hacking.py \
-  --rollouts artifacts/grpo_debug_local/cycle_0015/rollouts.jsonl \
-  --tasks data/processed/debug_tasks.jsonl
-
-# Paired baseline-vs-candidate statistics
-python3 scripts/compare_rollouts.py \
-  --baseline outputs/rollouts/baseline.jsonl \
-  --candidate outputs/rollouts/candidate.jsonl \
-  --output outputs/reports/comparison.md
 ```
 
-## How to add a dataset
-
-1. Provide tasks in MBPP, HumanEval, or canonical CodeSelf JSONL format
-   (loaders in `src/codeself/datasets/loaders.py`).
-2. Declare a versioned dataset config (`configs/datasets/*.dataset.yaml`) listing
-   the sources, split fractions, seed, and `visible_tests_per_task` for
-   auto hidden/visible splitting.
-3. `python3 scripts/build_dataset.py --config <cfg> --output <jsonl> --manifest <json>`.
-   The build **fails hard** on hidden-test leakage or train/eval contamination
-   (override with `--allow-contamination` only for debugging).
-
-## How to add a reward
-
-Implement the `RewardScorer` protocol (`score(result, *, solution_code) ->
-RewardBreakdown`) in `src/codeself/rewards/`, or configure the built-in
-`ConfigurableRewardScorer` modes: `binary_all_tests_pass`, `fractional_pass_rate`,
-`partial_credit`, with optional shaping (compile bonus, length penalty) logged as
-separate components. Reward-hacking flags are attached to rollout metadata
-automatically.
-
-## Compute requirements
-
-- **Smoke/CI**: any machine, no GPU, seconds.
-- **Debug run**: ~8 GB accelerator memory; the 0.6B LoRA GRPO debug run finishes
-  in a few minutes per a handful of cycles on an Apple M-series laptop (MPS, fp16).
-  Forward/backward are **microbatched** (`training.microbatch_size`) so peak
-  memory scales with the microbatch, not the full group.
-- **Full run**: a single 16–24 GB GPU for a 0.5B–1.5B coder model with LoRA,
-  bf16, and gradient checkpointing. Full fine-tuning is a config option
-  (`model.full_finetune: true`).
-
-## Reproducibility
+Generate a reproducibility manifest:
 
 ```bash
 python3 scripts/make_reproducibility_manifest.py \
@@ -203,40 +186,36 @@ python3 scripts/make_reproducibility_manifest.py \
   --markdown-output outputs/reports/reproducibility_manifest.md
 ```
 
-The manifest records git revision + dirty status, config/dataset/checkpoint
-hashes, environment lockfiles, parsed model/tokenizer references, and the
-captured **runtime environment** (accelerator, CPU count, exact torch /
-transformers / peft / accelerate / numpy versions).
+## Dataset Format
 
-Release-facing docs:
-[reproducibility checklist](./docs/reproducibility_checklist.md) ·
-[adapter model card](./docs/model_card_adapters.md) ·
-[dataset card](./docs/dataset_card_private_tasks.md) ·
-[limitations & safety](./docs/limitations_and_safety.md) ·
-[overhaul plan](./docs/overhaul_plan.md).
+A minimal task looks like this:
 
-## Results section template
+```json
+{
+  "task_id": "toy/add-one",
+  "source": "example",
+  "prompt": "Write a function add_one(x) that returns x + 1.",
+  "split": "train",
+  "entry_point": "add_one",
+  "public_tests": [
+    {"name": "public-basic", "code": "assert add_one(1) == 2"}
+  ],
+  "hidden_tests": [
+    {"name": "hidden-zero", "code": "assert add_one(0) == 1"}
+  ]
+}
+```
 
-When reporting a run, include:
-
-1. Dataset version + fingerprint (from the build manifest) and split sizes.
-2. Model + exact revision, LoRA config, dtype, accelerator (from the manifest).
-3. Reward curve and KL-to-reference over cycles (dashboard or `track_run.py`).
-4. Baseline-vs-final pass@k on the **held-out** set with paired bootstrap CI and
-   a permutation-test p-value + effect size (`compare_rollouts.py`).
-5. Pass-rate by difficulty bucket (`evaluate_rollouts.py --group-by
-   metadata.difficulty`).
-6. Fraction of flagged/degenerate rollouts (`scan_reward_hacking.py`).
-7. Known failure cases and the algorithm comparison (GRPO vs PPO).
+The loader also supports MBPP-style and HumanEval-style inputs through
+`scripts/prepare_datasets.py`.
 
 ## Safety
 
-Generated code is untrusted and executed only in the restricted sandbox
-(process jail, CPU/memory/file rlimits, parent-side memory watchdog, no network,
-static + runtime hardening, harness isolation so candidates cannot read expected
-outputs). Keep hidden tests out of prompts and public traces; reserve locked
-private test sets for final evaluation, not checkpoint selection. See
-[docs/limitations_and_safety.md](./docs/limitations_and_safety.md).
+Generated code is untrusted. CodeSelf runs candidates in a restricted
+subprocess with static checks, runtime hardening, CPU/file/process limits,
+network blocking, per-phase isolation, and a Docker runner for stricter final
+evaluation environments. Hidden tests should stay out of prompts, public traces,
+and model inputs.
 
 ## License
 
