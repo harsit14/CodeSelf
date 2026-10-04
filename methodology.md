@@ -13,8 +13,10 @@ comparison pipelines. The current repository contains a dependency-free smoke
 implementation of the full research workflow: task loading, sandbox execution,
 reward scoring, rollout records, baseline evaluation, GRPO diagnostics, PPO
 diagnostics, paired statistical testing, agentic traces, and reproducibility
-metadata. Real model fine-tuning is the next implementation layer and should
-reuse these contracts.
+metadata. On top of those contracts, the optional training extra runs real
+GRPO and PPO LoRA fine-tuning of an open causal language model (verified on
+Qwen3-0.6B-Base on a single Apple-Silicon/MPS device) with online
+collect -> execute -> score -> optimize cycles and per-cycle dev evaluation.
 
 ## 2. Research Scope
 
@@ -107,9 +109,9 @@ Rollout records include:
 - Execution result by phase.
 - Reward breakdown and diagnostics.
 
-The smoke repository supports mock, static, and optional local Transformers
-generation. Real training should add model revision, tokenizer revision,
-sampling parameters, log probabilities, and token counts.
+The smoke path supports mock and static generation. The Transformers engine
+adds batched group sampling, per-token log probabilities, and token counts for
+training. Paper-grade runs should also pin exact model and tokenizer revisions.
 
 ## 7. Execution Environment
 
@@ -151,12 +153,17 @@ Metrics to track:
 - Mean absolute group advantage.
 - Within-group reward variance.
 - Informative-prompt fraction.
-- KL, entropy, and token-level diagnostics once real model training is added.
+- KL to a frozen reference policy, entropy, clipped-token fraction, and
+  gradient norms.
 - Execution pass rate and parser failure rate.
 
-The current GRPO implementation is a smoke trainer. It computes grouped
-advantages and writes metrics/checkpoint manifests, but it does not update model
-weights.
+The real GRPO trainer uses a response-token-masked clipped policy objective
+with a k3 KL estimator against a frozen reference model. Log probabilities are
+computed with a logsumexp gather instead of a full-vocabulary log-softmax, and
+the forward/backward pass is microbatched; a unit test checks that the
+microbatched update matches the full-batch update. A dependency-free smoke
+trainer under `training/smoke/` exercises the same advantage and metrics code
+without Torch, for CI.
 
 ## 10. PPO Baseline
 
@@ -174,9 +181,12 @@ Real PPO requires:
 - Value loss tracking.
 - Actual checkpoint updates.
 
-The current PPO implementation is a smoke scaffold. It computes value-baseline
-advantages, simulated clipping diagnostics, and value-loss metrics so the report
-and comparison plumbing are ready before real training.
+The real PPO trainer supports both a shared-backbone value head and a separate
+critic model, GAE advantages, a clipped value loss, and the same microbatched,
+memory-bounded loop as GRPO. The value head runs in bf16 rather than fp16 to
+avoid overflow. In the small debug setting PPO trains stably but does not
+improve under the same rollout budget that improves GRPO (see the README); this
+is reported as a result rather than tuned away.
 
 ## 11. Agentic Strategy Analysis
 
@@ -310,9 +320,10 @@ python3 scripts/make_reproducibility_manifest.py \
 
 ## 15. Limitations
 
-The current repository does not yet perform real model fine-tuning. GRPO and PPO
-metrics are smoke diagnostics over generated rollouts. The mock backend is useful
-for testing code paths, not measuring model skill.
+Real GRPO/PPO training has only been run at debug scale: a 12-task
+distribution, a 0.6B-parameter base model, a single device, and a single seed.
+Those results validate the pipeline; they are not benchmark claims. The mock
+backend is useful for testing code paths, not measuring model skill.
 
 Other limitations:
 

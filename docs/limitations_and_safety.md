@@ -1,16 +1,18 @@
 # Limitations And Safety
 
 CodeSelf is a bounded research project, not an open-ended autonomous
-self-improvement system. The current implementation is a dependency-free
-scaffold for coding-task rollouts, rewards, smoke training diagnostics, and
-evaluation reports.
+self-improvement system. It provides a dependency-free pipeline for
+coding-task rollouts, rewards, and evaluation reports, plus optional real
+GRPO/PPO LoRA training through the `training` extra.
 
 ## Current Limitations
 
-- The GRPO and PPO trainers are smoke scaffolds and do not update model weights.
+- Real GRPO/PPO training has been verified only at debug scale (12 tasks,
+  a 0.6B base model, one device, one seed). Reported gains are pipeline
+  validation, not benchmark results.
 - The mock backend is useful for testing plumbing, not for measuring model skill.
-- Real training needs model log probabilities, KL accounting, checkpoint writes,
-  and GPU-backed generation.
+- PPO did not improve in the debug setting; whether that holds with a warmed-up
+  critic and larger batches is untested.
 - Benchmark contamination can make pass rates look better than genuine
   generalization.
 - Small evaluation sets can be underpowered.
