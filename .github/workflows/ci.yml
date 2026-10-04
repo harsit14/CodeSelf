@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # The core package has no third-party dependencies; Torch-backed tests
+      # skip themselves when the training extra is not installed.
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: End-to-end smoke pipeline
+        run: |
+          python scripts/validate_task_schema.py configs/datasets/tasks.example.jsonl
+          python scripts/run_rollouts.py \
+            --tasks configs/datasets/tasks.example.jsonl \
+            --output outputs/rollouts/ci_smoke.jsonl \
+            --backend mock \
+            --samples-per-task 4 \
+            --seed 20260601 \
+            --skip-data-quality-checks
+          python scripts/evaluate_rollouts.py \
+            --rollouts outputs/rollouts/ci_smoke.jsonl \
+            --output outputs/reports/ci_smoke_eval.md \
+            --ks 1,2,4
+          python scripts/scan_reward_hacking.py \
+            --rollouts outputs/rollouts/ci_smoke.jsonl \
+            --tasks configs/datasets/tasks.example.jsonl
+          python scripts/train_grpo_smoke.py \
+            --tasks configs/datasets/tasks.example.jsonl \
+            --output-dir outputs/checkpoints/ci_grpo_smoke \
+            --backend mock \
+            --group-size 4 \
+            --max-steps 3
+          python scripts/train_ppo_smoke.py \
+            --tasks configs/datasets/tasks.example.jsonl \
+            --output-dir outputs/checkpoints/ci_ppo_smoke \
+            --backend mock \
+            --samples-per-task 4 \
+            --max-steps 3

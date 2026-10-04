@@ -74,7 +74,6 @@ class GRPOModelForwardTests(unittest.TestCase):
         self.assertEqual(tuple(padded.advantages.shape), (2,))
 
     def test_model_tensor_batch_uses_differentiable_policy_and_detached_old_reference(self) -> None:
-        import torch
 
         batch = assign_group_relative_advantages(
             TrainingBatch(

@@ -118,7 +118,7 @@ class DockerSandboxRunner:
                     error=f"docker phase timed out after {limits.timeout_seconds:.3f}s",
                     tests_run=tests_run,
                 )
-            except FileNotFoundError as exc:
+            except FileNotFoundError:
                 duration = time.monotonic() - start
                 return PhaseResult(
                     name=phase_name,
