@@ -5,14 +5,35 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "codeself"
 version = "0.1.0"
-description = "Self-improving coding agent research scaffold with execution-based reinforcement learning."
+description = "Execution-feedback reinforcement learning (GRPO and PPO) for small code language models, with a hardened sandbox and paired statistical evaluation."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [
-  { name = "CodeSelf contributors" }
+  { name = "Harsit Upadhya" }
+]
+keywords = [
+  "reinforcement-learning",
+  "grpo",
+  "ppo",
+  "code-generation",
+  "llm",
+  "rlhf",
+  "sandbox",
+  "evaluation"
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Intended Audience :: Science/Research"
 ]
 dependencies = []
+
+[project.urls]
+Repository = "https://github.com/harsit14/CodeSelf"
+Methodology = "https://github.com/harsit14/CodeSelf/blob/main/methodology.md"
 
 [project.optional-dependencies]
 dev = [
@@ -51,6 +72,10 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests put src/ on sys.path before importing the package.
+"tests/**" = ["E402"]
 
 [tool.mypy]
 python_version = "3.11"

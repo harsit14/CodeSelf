@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from codeself.execution import TaskRunResult
 from codeself.rewards.correctness import RewardBreakdown, RewardConfig, score_correctness
-from codeself.rewards.efficiency import EfficiencyMetrics, measure_efficiency
+from codeself.rewards.efficiency import measure_efficiency
 from codeself.rewards.quality import QualityMetrics, measure_quality
 
 

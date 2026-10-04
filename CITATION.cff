@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "CodeSelf: Execution-Feedback Reinforcement Learning for Code Models"
+type: software
+authors:
+  - family-names: Upadhya
+    given-names: Harsit
+repository-code: "https://github.com/harsit14/CodeSelf"
+license: MIT
+version: 0.1.0
+date-released: 2026-06-14
+keywords:
+  - reinforcement learning
+  - GRPO
+  - PPO
+  - code generation
+  - large language models
